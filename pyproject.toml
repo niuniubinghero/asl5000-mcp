@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asl5000-mcp"
+version = "0.1.0"
+description = "MCP server and Agent Skill for controlling an ASL 5000 breathing simulator through its Test Automation Interface"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "asl5000-mcp contributors" }]
+keywords = ["mcp", "asl5000", "breathing-simulator", "ventilator", "cpap", "tai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Medical Science",
+]
+dependencies = ["mcp>=1.2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "build>=1.2"]
+
+[project.scripts]
+asl-monitor = "asl_monitor.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/niuniubinghero/asl5000-mcp"
+Issues = "https://github.com/niuniubinghero/asl5000-mcp/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+asl_monitor = ["data/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

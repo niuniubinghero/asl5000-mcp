@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local runtime state (never commit)
+config.json
+recordings/
+*.vr3
+*.sct
+*.log
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db

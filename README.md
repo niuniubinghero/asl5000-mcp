@@ -1,0 +1,154 @@
+# asl5000-mcp
+
+**让任意 AI Agent 直接操控 ASL 5000 模拟肺** —— 一个 [MCP](https://modelcontextprotocol.io/) 服务器 + 一份 Agent Skill。
+
+[English](#english) | [中文](#中文) | [License: MIT](#license)
+
+> **Unofficial / 非官方项目。** 本仓库只包含我们自行实现的通信客户端，不包含 ASL 软件、`ASL_TAI.exe`、厂商 TAI 规范文档或任何肺模型文件。使用本项目需要你已合法安装 ASL 5000 软件与 Test Automation Interface。
+
+---
+
+## English
+
+Talk to your Agent in plain language: *"connect to the lung simulator, run the Adult_normal scenario and compare PEEP before/after setting C1 to 50"*. The Agent calls `asl-monitor` MCP tools; the `asl-lung-sim` Skill keeps it from doing dangerous things.
+
+### What you get
+
+| Category | Tools | Purpose |
+|---|---|---|
+| Setup | `asl_env_check`, `asl_set_paths` | Detect ASL software / TAI server, list COM ports and the `vars/` script library |
+| Passive monitoring | `asl_check`, `asl_get_status`, `asl_snapshot`, `asl_start/stop_recording`, `asl_list_recordings` | Breath parameters + waveform statistics, snapshots, long-running CSV recording |
+| Active control | `asl_tai_start`, `asl_connect`, `asl_load_script`, `asl_run`, `asl_stop`, `asl_exit`, `asl_tai_status` | Start TAI, open ASL, load a scenario, run/stop a simulation |
+| Analysis | `asl_query_breath_params`, `asl_export_waveform` | Per-breath parameters (PIP/PEEP/AutoPEEP/Vt/trigger delay/work of breathing), full waveform export |
+| Configuration | `asl_init`, `asl_aux`, `asl_set_interactive`, `asl_set` | FRC / tubing compensation, auxiliary circuit, live changes to lung mechanics and closed-loop targets |
+
+21 tools in total. The Skill encodes the operating order, hard constraints (serial control commands, never call `asl_exit` unless asked, confirm before moving the piston) and the error-code recovery table.
+
+### Requirements
+
+- Windows with **ASL 5000 software** and **ASL Test Automation Interface (TAI)** installed (vendor products, not included).
+- Python >= 3.10.
+- A serial connection to the simulator; TAI only supports COM1–COM8. `DEMO` mode works without hardware.
+
+### Quick start (pip)
+
+```bash
+pip install asl5000-mcp          # or: pip install git+https://github.com/niuniubinghero/asl5000-mcp.git
+asl-monitor check                # self-check: paths, ports, COM ports, script library
+asl-monitor install --client claude --write
+```
+
+`install` merges `{"mcpServers":{"asl-monitor":{"command":"asl-monitor","args":[]}}}` into the client's config and keeps a `.bak`. Omit `--write` for a dry run. Restart the client afterwards.
+
+### Quick start (source, no install)
+
+```bash
+git clone https://github.com/niuniubinghero/asl5000-mcp
+cd asl5000-mcp
+pip install "mcp>=1.2"
+asl-monitor install --client cursor --mode source --write
+```
+
+Source mode points the client at `run_server.py` with your current Python interpreter — no console script needed.
+
+### Install the Skill
+
+```bash
+asl-monitor install --client workbuddy --skill --skills-root .workbuddy/skills --write
+```
+
+Or copy `skill/asl-lung-sim/SKILL.md` into your Agent's skills directory manually.
+
+### Path configuration
+
+Nothing is hard-coded. If auto-discovery fails:
+
+```bash
+asl-monitor paths --sw "<path-to-ASL5000_SW3.6.exe>" --tai "<path-to-ASL_TAI.exe>"
+# or let the Agent call asl_set_paths during a session
+```
+
+Environment variables `ASL_SW_PATH`, `ASL_TAI_EXE`, `ASL_ROOT`, `ASL_TAI_HOST`, `ASL_TAI_PORT`, `ASL_MONITOR_CONFIG` and `ASL_MONITOR_RECORDINGS` override everything.
+
+See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
+
+---
+
+## 中文
+
+用自然语言对 Agent 说：「连模拟肺，跑 Adult_normal 场景，把 C1 改成 50 前后各取一次 PEEP 对比」。Agent 通过 `asl-monitor` 的 21 个工具完成，`asl-lung-sim` Skill 负责约束操作顺序与安全边界。
+
+### 能力一览
+
+| 类别 | 工具 | 作用 |
+|---|---|---|
+| 部署自检 | `asl_env_check`、`asl_set_paths` | 检测软件/服务器、端口、COM 口清单与 `vars/` 脚本库 |
+| 被动监控 | `asl_check`、`asl_get_status`、`asl_snapshot`、`asl_start/stop_recording`、`asl_list_recordings` | 呼吸参数 + 波形统计、快照、长程 CSV 录波 |
+| 主动控制 | `asl_tai_start`、`asl_connect`、`asl_load_script`、`asl_run`、`asl_stop`、`asl_exit`、`asl_tai_status` | 拉起 TAI、连机、加载脚本、启动/停止仿真 |
+| 参数分析 | `asl_query_breath_params`、`asl_export_waveform` | 逐口参数（PIP/PEEP/AutoPEEP/Vt/触发响应时间/做功）、完整波形导出 |
+| 实时配置 | `asl_init`、`asl_aux`、`asl_set_interactive`、`asl_set` | FRC/管路补偿、辅助回路、运行中改肺模型与闭环目标 |
+
+### 两种安装方式
+
+**pip 方式**（推荐）：
+
+```bash
+pip install asl5000-mcp
+asl-monitor check
+asl-monitor install --client workbuddy --write
+```
+
+仓库里的配置片段为 `{"mcpServers":{"asl-monitor":{"command":"asl-monitor","args":[]}}}`，不含任何绝对路径。`asl-monitor install` 在本机会自动解析 console script 的真实路径（例如 pip 装到用户目录、Scripts 不在 PATH 时），只把解析后的路径写进你自己的客户端配置。
+
+**源码免安装**：
+
+```bash
+git clone https://github.com/niuniubinghero/asl5000-mcp && cd asl5000-mcp
+pip install "mcp>=1.2"
+asl-monitor install --client cursor --mode source --write
+```
+
+源码模式会用当前 Python 解释器指向仓库内的 `run_server.py`。
+
+### Skill 安装
+
+```bash
+asl-monitor install --client workbuddy --skill --skills-root .workbuddy/skills --write
+```
+
+也可以直接把 `skill/asl-lung-sim/SKILL.md` 拷到客户端的 skills 目录。
+
+### 路径配置
+
+包内不含任何机器路径。自动探测失败时：
+
+```bash
+asl-monitor paths --sw "<ASL5000 软件 exe>" --tai "<ASL_TAI.exe>"
+```
+
+或在会话中让 Agent 调用 `asl_set_paths`。优先级：环境变量 > 用户配置文件 > 自动探测。
+
+### 安全提醒
+
+- 启动仿真会驱动真实活塞，Skill 要求 Agent 先获得你的确认。
+- `asl_exit`(EX) 存在厂商软件崩溃、主机脱离 PC 继续运行的风险。测试结束默认停在 IDLE 保持连接，**不要自作主张 EX**；详见 [TROUBLESHOOTING](docs/TROUBLESHOOTING.md)。
+- 本项目用于研发/测试自动化，不是医疗器械，不用于临床诊断或治疗决策。
+
+---
+
+## Layout / 目录结构
+
+```
+pyproject.toml          packaging + asl-monitor console script
+src/asl_monitor/        server.py / monitor.py / tai.py / config.py / cli.py
+  data/SKILL.md         authoritative Agent Skill (shipped in the wheel)
+skill/asl-lung-sim/     identical copy for manual installation
+configs/                zero-absolute-path client snippets (pip mode)
+run_server.py           source-mode entry point
+docs/                   INSTALL / TROUBLESHOOTING / PROTOCOL
+tests/                  hardware-free unit tests
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE). Vendor software, vendor documentation and lung models are **not** covered by this license and are not distributed here.
