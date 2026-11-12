@@ -156,6 +156,24 @@ class TestScriptIndex(unittest.TestCase):
         self.assertEqual(bsi.classify_source("vars/current.sct",
                                              "2020-01-01 00:00", "2019-01-01"), "运行时")
 
+    def test_parse_sct_sums_repetitions_not_seconds(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            vd = root / "vars" / "scenarios"
+            vd.mkdir(parents=True)
+            (vd / "model.vr3").write_bytes(b"x")
+            sct = vd / "multi.sct"
+            # Vendor-shaped 3-segment scenario. The first column is a repetition
+            # count, not a duration (values like 1000 / 150 / 11 are common).
+            sct.write_bytes(
+                b"1000\t<ASLVarsDirectory>\\scenarios\\model.vr3\r\n"
+                b"150\t<ASLVarsDirectory>\\scenarios\\model.vr3\r\n"
+                b"11\t<ASLVarsDirectory>\\scenarios\\model.vr3\r\n")
+            segs, reps, refs, missing = bsi.parse_sct(str(sct), root / "vars")
+            self.assertEqual((segs, reps, missing), (3, 1161, 0))
+            self.assertEqual(len(refs), 1)
+            self.assertEqual(int(reps), reps)  # integral repetition count, not a duration
+
     def test_end_to_end_index(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d) / "install"
@@ -172,6 +190,9 @@ class TestScriptIndex(unittest.TestCase):
             sct_rows = [r for r in rows if r["文件名"] == "demo.sct"]
             self.assertEqual(len(sct_rows), 1)
             self.assertEqual(sct_rows[0]["sct引用检查"], "正常")
+            self.assertIn("sct首列合计(重复次数)", rows[0])
+            self.assertNotIn("sct总时长(分)", rows[0])
+            self.assertEqual(sct_rows[0]["sct首列合计(重复次数)"], "1000")
             vr3_rows = [r for r in rows if r["文件名"] == "Adult_normal.vr3"]
             self.assertEqual(vr3_rows[0]["vr3气道阻力(in/out)"], "6.000000/")
 

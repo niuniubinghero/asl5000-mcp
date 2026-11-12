@@ -29,6 +29,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or common install locations, and can be supplied at runtime with `asl_set_paths`.
 - Recordings are written to a user data directory instead of the package directory.
 
+### Fixed
+- `build_script_index.py`: the `.sct` first column is a repetition count, not seconds. It was
+  previously summed as seconds and divided by 60 into a misleading `sct总时长(分)` column
+  (a single-row wrapper with `1000` showed `16.7` minutes). The column is now
+  `sct首列合计(重复次数)` and reports the integer sum. Column count stays at 32.
+- `asl-lung-sim` Skill: removed the stale claim that this repository ships no batch model
+  generator; it now documents `tools/make_vr3.py` / `tools/build_script_index.py`, the need for
+  a locally supplied `.vr3` template, and the requirement to write output under `vars/`.
+
 ### Notes
 - This is an independent, unofficial client. It does not include ASL software,
   the TAI server, vendor documentation, or any lung-model/script files.

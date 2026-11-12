@@ -32,7 +32,7 @@ batch.json 示例:
 - 值按原样写入; 浮点数统一 6 位小数(与官方文件风格一致), 整数/字符串原样
 - 复合值字段(spontaneous_amplitude_flag 等)请整体传原始字符串, 例如
   --set spontaneous_amplitude_flag="5 i1.000000 e1.000000 d0 p0.000000"
-- .sct 首列为重复次数(repetitions), 官方手册 6.3 节注明不等同呼吸数, 默认 1000 与官方单模型场景一致
+- .sct 首列为重复次数(repetitions), 官方手册 6.3 节注明不等同呼吸数、也不是秒数; 默认 1000 与官方单模型场景一致
 """
 
 import argparse

@@ -26,8 +26,9 @@ build_script_index.py ──> script_index.csv ──> pick a scenario ──> a
 ```
 
 A bare `.vr3` cannot be loaded: `asl_run` expects an `.sct` scenario script (`ERROR(14)` otherwise).
-The first column of `.sct` is a repetition count (default 1000), **not** a breath count — see section
-6.3 of the vendor manual.
+The first column of `.sct` is a repetition count (default 1000) — **not** a breath count and not a
+number of seconds (section 6.3 of the vendor manual). The index therefore reports the summed
+repetition count, not a duration.
 
 ## make_vr3.py
 
@@ -58,7 +59,7 @@ study, then load each variant through `asl_load_script` and compare waveforms.
 ## build_script_index.py
 
 Scans `<ASL_ROOT>/vars` and `<ASL_ROOT>/breath`, parses naming conventions (BPM, I:E, R, C, P, Pmax,
-FL, VT, MV, event count) plus file contents (`.sct` segments/duration/referenced models and whether
+FL, VT, MV, event count) plus file contents (`.sct` segments/summed repetition counts/referenced models and whether
 those references resolve; `.vr3` rate/resistance/compliance/time-varying trajectory; `.in` sample
 count and value range) and produces a 32-column index.
 

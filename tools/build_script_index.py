@@ -168,9 +168,14 @@ def classify(relpath):
 
 
 def parse_sct(path, vars_dir):
-    """sct 场景脚本: 段数, 总时长(秒), 引用的 vr3 (去重), 引用有效性."""
+    """sct 场景脚本: 段数, 首列合计(重复次数), 引用的 vr3 (去重), 引用有效性.
+
+    首列是 ASL 的 repetitions(重复次数), 不是秒数也不等同呼吸数(厂商手册 6.3 节);
+    实测取值为 1/8/11/75/150/1000/11000/20000 等。早期版本把它当秒累加再除以 60
+    写入 "sct总时长(分)" 列, 会给出 1000 -> 16.7 分这类无意义数值, 现改为如实合计次数。
+    """
     segs = 0
-    dur = 0.0
+    reps_total = 0.0
     refs = []
     missing = 0
     try:
@@ -182,7 +187,7 @@ def parse_sct(path, vars_dir):
                 parts = line.split("\t")
                 segs += 1
                 try:
-                    dur += float(parts[0])
+                    reps_total += float(parts[0])
                 except ValueError:
                     pass
                 if len(parts) > 1:
@@ -198,7 +203,7 @@ def parse_sct(path, vars_dir):
                         missing += 1
     except OSError:
         pass
-    return segs, dur, refs, missing
+    return segs, reps_total, refs, missing
 
 
 def parse_vr3(path):
@@ -357,14 +362,14 @@ def main(root, out_dir, cutoff):
                     size_kb, mtime = "", ""
                 source = classify_source(rel, mtime, cutoff)
 
-                segs = dur_min = refs_col = ref_chk = ""
+                segs = reps_col = refs_col = ref_chk = ""
                 vr3_sct = vr3_rate = vr3_r = vr3_c = vr3_ctot = vr3_in = vr3_vp = ""
                 in_pts = in_rng = ""
 
                 if ftype.startswith("\u573a\u666f"):
-                    segs_n, dur_s, refs, missing = parse_sct(full, root / "vars")
+                    segs_n, reps_total, refs, missing = parse_sct(full, root / "vars")
                     segs = str(segs_n)
-                    dur_min = "%.1f" % (dur_s / 60.0) if dur_s else "0"
+                    reps_col = "%d" % int(reps_total) if reps_total else "0"
                     refs_col = "|".join(os.path.basename(r) for r in refs)
                     ref_chk = "\u6b63\u5e38" if missing == 0 else "\u5931\u6548%d\u5904" % missing
                     # 与同名 vr3 配对情况
@@ -409,7 +414,7 @@ def main(root, out_dir, cutoff):
                     nameinfo.get("mv", ""),
                     nameinfo.get("events", ""),
                     segs,
-                    dur_min,
+                    reps_col,
                     refs_col,
                     ref_chk,
                     vr3_sct,
@@ -430,7 +435,7 @@ def main(root, out_dir, cutoff):
         "\u5e8f\u53f7", "\u76ee\u5f55", "\u6587\u4ef6\u540d", "\u7c7b\u578b", "\u7528\u9014\u5206\u7c7b", "\u6765\u6e90",
         "BPM(\u547d\u540d)", "I:E(\u547d\u540d)", "R(\u547d\u540d)", "C(\u547d\u540d)", "P(\u547d\u540d)",
         "Pmax(\u547d\u540d)", "FL(\u547d\u540d)", "VT(\u547d\u540d)", "MV(\u547d\u540d)", "\u4e8b\u4ef6\u6570(\u547d\u540d)",
-        "sct\u6bb5\u6570", "sct\u603b\u65f6\u957f(\u5206)", "sct\u5f15\u7528vr3",         "sct\u5f15\u7528\u68c0\u67e5",
+        "sct\u6bb5\u6570", "sct\u9996\u5217\u5408\u8ba1(\u91cd\u590d\u6b21\u6570)", "sct\u5f15\u7528vr3",         "sct\u5f15\u7528\u68c0\u67e5",
         "sct/vr3\u540c\u540d\u914d\u5bf9", "vr3\u547c\u5438\u9891\u7387bpm", "vr3\u6c14\u9053\u963b\u529b(in/out)",
         "vr3\u5f39\u6027a1(\u5de6/\u53f3,cmH2O/L)", "vr3\u603b\u987a\u5e94\u6027(mL/cmH2O)",
         "vr3\u5f15\u7528\u6ce2\u5f62", "vr3\u542b\u65f6\u53c2\u8f68\u8ff9", "\u6ce2\u5f62\u91c7\u6837\u70b9\u6570",
