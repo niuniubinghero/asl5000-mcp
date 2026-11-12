@@ -84,9 +84,10 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 
 然后 `asl_load_script(name="<脚本名>", path="\\VARS\\<子目录>")`（不带扩展名），再 `asl_run`。官方场景目录里 `.sct` 与同名 `.vr3` 成对存在，可作为格式参考。
 
-**批量造模型请用仓库自带的离线工具**：`tools/make_vr3.py` 按模板改写 `.vr3` 变量并自动写出同名 `.sct` 包装，支持单个 `--set` 与 `--from-json` 批量模式；安装根由 `--asl-root` / `ASL_ROOT` 自动探测。用法与参数见 `tools/README.md`（源码方式运行，不随 wheel 安装、**不在 21 个 MCP 工具里**）。
+**批量造模型请用仓库自带的离线工具**：`tools/make_vr3.py` 按模板改写 `.vr3` 变量；**显式加 `--sct` 才同时写出同名 `.sct` 包装，默认只出模型**，支持单个 `--set` 与 `--from-json` 批量模式；安装根由 `--asl-root` / `ASL_ROOT` 自动探测。用法与参数见 `tools/README.md`（源码方式运行，不随 wheel 安装、**不在 21 个 MCP 工具里**）。
 
 - 模板需自备：从本机 `<ASL_ROOT>/vars/scenarios/` 挑一个官方 `.vr3`。本仓库出于合规与体积考虑**不分发** `.vr3` 模型、脚本清单 CSV、厂商可执行文件或厂商文档。
+- 生成阶段写 `.sct` 是**可选**的（省略 `--sct` 就只出 `.vr3`）；但**加载阶段**必须有同名 `.sct`，否则 `asl_run` 报 ERROR(14)。两者别混淆。
 - 产物必须写在 `<ASL_ROOT>/vars/` 下（工具默认输出根就是它），否则 `.sct` 里的 `<ASLVarsDirectory>` 引用会退化成绝对路径，`asl_load_script` 的 `\VARS\...` 也找不到文件。
 - 上例首列 `1000` 是重复次数（repetitions），**既不等同呼吸数、也不是秒数**（厂商手册 6.3 节）；脚本索引 CSV 因此只统计「首列合计(重复次数)」，不提供时长列。
 - 找脚本用 `tools/build_script_index.py`，它扫描本机 `vars/` 与 `breath/` 生成可检索清单并顺带检查 `.sct` 引用失效 / `.vr3` 缺包装。

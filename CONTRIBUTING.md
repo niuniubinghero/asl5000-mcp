@@ -50,3 +50,20 @@ or simply copy `src/asl_monitor/data/SKILL.md` to `skill/asl-lung-sim/SKILL.md`.
 Describe the hardware/firmware/ASL version you tested against (if any), include
 the `asl-monitor check` output with paths redacted, and note any change to the
 21 MCP tool signatures — downstream Skills depend on them.
+
+## Roadmap / TODO
+
+- [ ] **`tools/make_vr3.py`: `--sct-only` mode** — generate only the matching `.sct`
+  wrapper for an already existing `.vr3`, without reading a template or rewriting the
+  model. The current CLI requires `--template` and always calls `save_vr3()`, which
+  either refreshes the model's mtime (skewing the index's official/custom classification,
+  which is mtime-based) or silently overwrites an existing model with template content.
+  `make_sct()` already supports this at function level.
+  Requirements: make `--template` conditionally optional; verify the target `.vr3`
+  exists; skip an existing `.sct` unless `--force`; support
+  `{"sct_only": true, "out": ...}` in `--from-json` batch mode; add hardware-free tests
+  asserting the `.vr3` bytes and mtime are untouched; update `tools/README.md` and both
+  SKILL.md copies.
+  Motivation: a real script library contains ~750 `.vr3` models with no `.sct` wrapper,
+  and `asl_run` cannot load them (ERROR 14).
+  Recorded 2026-11-12, **not implemented yet**.

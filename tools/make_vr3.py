@@ -2,13 +2,14 @@
 """模拟肺 .vr3 肺模型生成器 / Lung-model generator (ASL 5000 / TAI)
 
 按模板 .vr3 生成新模型文件, 仅改写指定变量的值字段, 其余字节(TAB/空格对齐/CRLF)原样保留;
-可同时生成配套 .sct 包装(单行 TAB 分隔文本: 第一列重复次数, 第二列指向
-<ASLVarsDirectory> 下的 .vr3 文件, CRLF 结尾), 供 asl_load_script + asl_run 使用。
+可选生成配套 .sct 包装(仅传 --sct 时; 缺省只出 .vr3)。包装为单行 TAB 分隔文本:
+第一列重复次数, 第二列指向 <ASLVarsDirectory> 下的 .vr3 文件, CRLF 结尾,
+供 asl_load_script + asl_run 使用。
 
 背景:
 - .vr3 是纯文本 TAB 分隔变量表: (模块) 描述 (类型) 变量名 = 值 (单位) (min) (max)
 - TAI 无生成/保存 .vr3 的命令, 运行中 IC/IM 改参不落盘; 批量造模型只能靠本工具这类脚本
-- .vr3 必须配同名 .sct 包装才能 asl_run, 否则报 ERROR(14)
+- 加载/运行阶段 .vr3 必须配同名 .sct 包装才能 asl_run, 否则报 ERROR(14); 但生成阶段写包装是可选的
 
 安装根(含 vars/ 与 breath/)由 --asl-root / ASL_ROOT / ASL_SW_PATH 自动探测, 见 _paths.py。
 
@@ -16,7 +17,10 @@
     # 列出模板全部变量 (无需定位安装根)
     python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
 
-    # 生成单个模型 + 同名 .sct 包装 (--out 相对路径按 ASL vars 目录解析)
+    # 只生成模型 (缺省不写 .sct)
+    python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/m1.vr3" --set r_trachea_in=21
+
+    # 生成单个模型 + 同名 .sct 包装 (加 --sct; --out 相对路径按 ASL vars 目录解析)
     python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/hme_r21.vr3" --set r_trachea_in=21 --sct
 
     # 批量生成 (JSON 数组, out 相对 --outdir 或 vars 目录)
@@ -25,8 +29,10 @@
 batch.json 示例:
     [
       {"out": "<scenario-dir>/m1.vr3", "set": {"r_trachea_in": 21}, "sct": true, "reps": 1000},
-      {"out": "<scenario-dir>/m2.vr3", "set": {"function_residual_capacity": 0.8}, "sct": true}
+      {"out": "<scenario-dir>/m2.vr3", "set": {"function_residual_capacity": 0.8}}
     ]
+
+省略 sct 的条目只出 .vr3; batch.json 必须是合法 JSON(不支持注释)。
 
 注意:
 - 值按原样写入; 浮点数统一 6 位小数(与官方文件风格一致), 整数/字符串原样
@@ -214,7 +220,7 @@ def report(applied, not_found, out_path, sct_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="按模板生成 .vr3 肺模型 + .sct 包装")
+    ap = argparse.ArgumentParser(description="按模板生成 .vr3 肺模型 (--sct 可选生成同名包装)")
     ap.add_argument("--template", required=True, help="模板 .vr3 路径")
     ap.add_argument("--asl-root", help="ASL 安装根目录(含 vars/); 缺省自动探测")
     ap.add_argument("--out", help="输出 .vr3 路径(相对路径按 ASL vars 目录解析)")
@@ -222,7 +228,7 @@ def main():
     ap.add_argument("--set", action="append", default=[], metavar="名=值",
                     help="改写变量, 可多次; 值含空格时整体加引号")
     ap.add_argument("--from-json", help="批量模式: JSON 数组文件")
-    ap.add_argument("--sct", action="store_true", help="同时生成同名 .sct 包装")
+    ap.add_argument("--sct", action="store_true", help="同时生成同名 .sct 包装(缺省不生成; 仅当要用 asl_run 加载时才需要)")
     ap.add_argument("--reps", type=int, default=1000, help=".sct 首列重复次数(默认 1000)")
     ap.add_argument("--list", action="store_true", help="只列出模板全部变量, 不生成")
     args = ap.parse_args()

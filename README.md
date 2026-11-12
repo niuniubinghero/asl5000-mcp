@@ -80,7 +80,8 @@ python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3"
 python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 ```
 
-`make_vr3.py` builds model variants plus the `.sct` wrapper that `asl_run` requires;
+`make_vr3.py` builds model variants; add `--sct` to also write the matching `.sct` wrapper
+that `asl_run` requires (off by default).
 `build_script_index.py` produces a 32-column searchable CSV index of `vars/` and `breath/`.
 Both auto-detect the install root or take `--asl-root`. See [tools/README.md](tools/README.md).
 
@@ -151,7 +152,7 @@ python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3"
 python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 ```
 
-`make_vr3.py` 按模板批量造肺模型并生成 `asl_run` 必需的 `.sct` 包装；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。详见 [tools/README.md](tools/README.md)。
+`make_vr3.py` 按模板批量造肺模型，显式加 `--sct` 才同时写出 `asl_run` 需要的 `.sct` 包装（默认只出模型、不写包装）；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。详见 [tools/README.md](tools/README.md)。
 
 ### 安全提醒
 

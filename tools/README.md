@@ -5,7 +5,7 @@ They run straight from a source checkout with any Python >= 3.10 (standard libra
 
 | Script | Job | Output |
 |---|---|---|
-| `make_vr3.py` | Build new lung models from a `.vr3` template | `.vr3` + matching `.sct` wrapper |
+| `make_vr3.py` | Build new lung models from a `.vr3` template | `.vr3`, plus a matching `.sct` wrapper only when `--sct` is given |
 | `build_script_index.py` | Index the vendor script library | 3 searchable CSV files |
 
 `_paths.py` is shared path discovery. All three are independent of `asl_monitor` and are shipped in
@@ -21,11 +21,14 @@ without crawling directories by hand.
 Data flow:
 
 ```
-make_vr3.py ──> model.vr3 + model.sct ──> asl_load_script ──> asl_run ──> asl_set / asl_query_breath_params
+make_vr3.py ──> model.vr3 [+ model.sct when --sct] ──> asl_load_script ──> asl_run ──> asl_set / asl_query_breath_params
 build_script_index.py ──> script_index.csv ──> pick a scenario ──> asl_load_script
 ```
 
 A bare `.vr3` cannot be loaded: `asl_run` expects an `.sct` scenario script (`ERROR(14)` otherwise).
+That is a **runtime** requirement, not a generation requirement — writing the wrapper is optional
+at generation time (`--sct`, off by default) and only needed when you intend to load the model
+through `asl_load_script` / `asl_run` right away.
 The first column of `.sct` is a repetition count (default 1000) — **not** a breath count and not a
 number of seconds (section 6.3 of the vendor manual). The index therefore reports the summed
 repetition count, not a duration.
@@ -40,7 +43,11 @@ right of `=`; TAB alignment, spaces, CRLF line endings and non-ASCII bytes are p
 # List every variable in a template (no install root needed)
 python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
 
-# One model + its .sct wrapper (relative --out resolves under <ASL_ROOT>/vars)
+# Model only (default: no .sct is written)
+python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" \
+  --out "<scenario-dir>/hme_r21.vr3" --set r_trachea_in=21
+
+# Model + its .sct wrapper (add --sct; relative --out resolves under <ASL_ROOT>/vars)
 python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" \
   --out "<scenario-dir>/hme_r21.vr3" \
   --set r_trachea_in=21 --set r_trachea_out=23 --set spontaneous_breathing_rate=18 --sct
@@ -49,7 +56,8 @@ python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3"
 python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
 ```
 
-`batch.json` is an array of `{"out": ..., "set": {...}, "sct": true, "reps": 1000}` objects. Use
+`batch.json` is an array of `{"out": ..., "set": {...}, "sct": true, "reps": 1000}` objects. The
+`sct` key is optional: omit it (or leave out `--sct`) and only the `.vr3` is written. Use
 `--outdir <dir>` to write somewhere other than the vendor `vars/` directory (the `.sct` then
 references an absolute path; keeping files under `vars/` is recommended).
 
@@ -59,8 +67,8 @@ study, then load each variant through `asl_load_script` and compare waveforms.
 ## build_script_index.py
 
 Scans `<ASL_ROOT>/vars` and `<ASL_ROOT>/breath`, parses naming conventions (BPM, I:E, R, C, P, Pmax,
-FL, VT, MV, event count) plus file contents (`.sct` segments/summed repetition counts/referenced models and whether
-those references resolve; `.vr3` rate/resistance/compliance/time-varying trajectory; `.in` sample
+FL, VT, MV, event count) plus file contents (`.sct` segments/summed repetition counts/referenced
+models and whether those references resolve; `.vr3` rate/resistance/compliance/time-varying trajectory; `.in` sample
 count and value range) and produces a 32-column index.
 
 ```bash

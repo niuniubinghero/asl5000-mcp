@@ -28,6 +28,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   server locations are discovered from environment variables, a user config file,
   or common install locations, and can be supplied at runtime with `asl_set_paths`.
 - Recordings are written to a user data directory instead of the package directory.
+- `.sct` wrapper generation is documented as explicitly optional (`--sct`, off by
+  default). README, tools/README, the CLI help and both Skill copies now distinguish
+  the optional generation step from the wrapper that `asl_run` requires at runtime.
+  A `--sct-only` mode is recorded as a TODO in CONTRIBUTING.md (not implemented).
 
 ### Fixed
 - `build_script_index.py`: the `.sct` first column is a repetition count, not seconds. It was
