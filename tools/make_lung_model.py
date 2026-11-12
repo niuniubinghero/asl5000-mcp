@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""模拟肺 .vr3 肺模型生成器 / Lung-model generator (ASL 5000 / TAI)
+"""模拟肺模型与场景脚本生成器 / Lung-model & scenario-script generator (ASL 5000 / TAI)
+
+名字按"生成什么"(肺模型及其加载脚本)而非文件扩展名来取: 产物可以是 .vr3 模型、
+可选的 .sct 场景脚本, 或(规划中的 --sct-only)只补一份 .sct。
 
 按模板 .vr3 生成新模型文件, 仅改写指定变量的值字段, 其余字节(TAB/空格对齐/CRLF)原样保留;
 可选生成配套 .sct 包装(仅传 --sct 时; 缺省只出 .vr3)。包装为单行 TAB 分隔文本:
@@ -15,16 +18,16 @@
 
 用法:
     # 列出模板全部变量 (无需定位安装根)
-    python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
+    python make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
 
     # 只生成模型 (缺省不写 .sct)
-    python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/m1.vr3" --set r_trachea_in=21
+    python make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/m1.vr3" --set r_trachea_in=21
 
     # 生成单个模型 + 同名 .sct 包装 (加 --sct; --out 相对路径按 ASL vars 目录解析)
-    python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/hme_r21.vr3" --set r_trachea_in=21 --sct
+    python make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/hme_r21.vr3" --set r_trachea_in=21 --sct
 
     # 批量生成 (JSON 数组, out 相对 --outdir 或 vars 目录)
-    python make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
+    python make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
 
 batch.json 示例:
     [
@@ -48,7 +51,7 @@ import sys
 
 try:
     from _paths import resolve_root
-except ImportError:  # when imported as tools.make_vr3
+except ImportError:  # when imported as tools.make_lung_model
     from ._paths import resolve_root
 
 TOKEN = "<ASLVarsDirectory>"
@@ -220,7 +223,7 @@ def report(applied, not_found, out_path, sct_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="按模板生成 .vr3 肺模型 (--sct 可选生成同名包装)")
+    ap = argparse.ArgumentParser(description="按模板生成肺模型(.vr3), 可选同时写出场景脚本包装(.sct)")
     ap.add_argument("--template", required=True, help="模板 .vr3 路径")
     ap.add_argument("--asl-root", help="ASL 安装根目录(含 vars/); 缺省自动探测")
     ap.add_argument("--out", help="输出 .vr3 路径(相对路径按 ASL vars 目录解析)")

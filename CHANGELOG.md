@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+- Renamed `tools/make_vr3.py` to `tools/make_lung_model.py`. The old name implied the
+  tool only produced `.vr3` files, while it also writes optional `.sct` scenario
+  wrappers and will gain a `--sct-only` mode. All command examples, the Skill copies,
+  the TODO entry and the hardware-free tests were updated. No compatibility alias is
+  kept because 0.1.0 has not been published yet.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added
@@ -15,8 +24,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `asl-monitor check` / `asl-monitor paths` for environment self-check and
   machine-specific path configuration.
 - Hardware-free unit tests for path discovery, TAI frame parsing and broadcast parsing.
-- `tools/make_vr3.py`: offline generator for `.vr3` lung models plus the matching
-  `.sct` wrapper required by `asl_run` (single model and JSON batch modes).
+- `tools/make_vr3.py` (now `tools/make_lung_model.py`): offline generator for `.vr3`
+  lung models plus the matching `.sct` wrapper required by `asl_run` (single model
+  and JSON batch modes).
 - `tools/build_script_index.py`: 32-column CSV index of the vendor `vars/` and
   `breath/` script libraries, including broken-reference and missing-wrapper checks.
 - `tools/_paths.py`: shared install-root discovery (`--asl-root`, `ASL_ROOT`,
@@ -39,7 +49,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (a single-row wrapper with `1000` showed `16.7` minutes). The column is now
   `sct首列合计(重复次数)` and reports the integer sum. Column count stays at 32.
 - `asl-lung-sim` Skill: removed the stale claim that this repository ships no batch model
-  generator; it now documents `tools/make_vr3.py` / `tools/build_script_index.py`, the need for
+  generator; it now documents `tools/make_lung_model.py` (then `tools/make_vr3.py`) /
+  `tools/build_script_index.py`, the need for
   a locally supplied `.vr3` template, and the requirement to write output under `vars/`.
 
 ### Notes

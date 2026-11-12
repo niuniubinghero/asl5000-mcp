@@ -76,11 +76,11 @@ TAI cannot create or save `.vr3` models, and a real install has 1000+ scripts. T
 scripts in `tools/` cover that gap (they do not talk to the simulator and are not part of the wheel):
 
 ```bash
-python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
+python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
 python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 ```
 
-`make_vr3.py` builds model variants; add `--sct` to also write the matching `.sct` wrapper
+`make_lung_model.py` builds model variants; add `--sct` to also write the matching `.sct` wrapper
 that `asl_run` requires (off by default).
 `build_script_index.py` produces a 32-column searchable CSV index of `vars/` and `breath/`.
 Both auto-detect the install root or take `--asl-root`. See [tools/README.md](tools/README.md).
@@ -148,11 +148,11 @@ asl-monitor paths --sw "<ASL5000 软件 exe>" --tai "<ASL_TAI.exe>"
 TAI 没有生成/保存 `.vr3` 的能力，脚本库又常上千个文件。`tools/` 下有两个纯标准库脚本补齐这两块（不连设备、不随 wheel 分发）：
 
 ```bash
-python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
+python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
 python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 ```
 
-`make_vr3.py` 按模板批量造肺模型，显式加 `--sct` 才同时写出 `asl_run` 需要的 `.sct` 包装（默认只出模型、不写包装）；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。详见 [tools/README.md](tools/README.md)。
+`make_lung_model.py` 按模板批量造肺模型，显式加 `--sct` 才同时写出 `asl_run` 需要的 `.sct` 包装（默认只出模型、不写包装）；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。详见 [tools/README.md](tools/README.md)。
 
 ### 安全提醒
 

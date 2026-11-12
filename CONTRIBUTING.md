@@ -53,7 +53,7 @@ the `asl-monitor check` output with paths redacted, and note any change to the
 
 ## Roadmap / TODO
 
-- [ ] **`tools/make_vr3.py`: `--sct-only` mode** — generate only the matching `.sct`
+- [ ] **`tools/make_lung_model.py`: `--sct-only` mode** — generate only the matching `.sct`
   wrapper for an already existing `.vr3`, without reading a template or rewriting the
   model. The current CLI requires `--template` and always calls `save_vr3()`, which
   either refreshes the model's mtime (skewing the index's official/custom classification,

@@ -22,7 +22,7 @@ sys.path.insert(0, str(TOOLS_DIR))
 
 import _paths  # noqa: E402
 import build_script_index as bsi  # noqa: E402
-import make_vr3  # noqa: E402
+import make_lung_model  # noqa: E402
 
 # One real-shaped .vr3 line: module / description / type / name / = / value / unit.
 VR3_LINE = ("  (lung_model)\t r_trachea_in             \t (float)   \t"
@@ -75,7 +75,7 @@ class TestPathDiscovery(unittest.TestCase):
 class TestMakeVr3(unittest.TestCase):
 
     def test_set_vars_preserves_layout(self):
-        new_lines, applied, missing = make_vr3.set_vars([VR3_LINE], {"r_trachea_in": 21})
+        new_lines, applied, missing = make_lung_model.set_vars([VR3_LINE], {"r_trachea_in": 21})
         self.assertEqual(len(applied), 1)
         self.assertEqual(missing, [])
         self.assertEqual(applied[0][1], "6.000000")
@@ -87,13 +87,13 @@ class TestMakeVr3(unittest.TestCase):
         self.assertIn("(float)", out)  # untouched columns survive
 
     def test_set_vars_case_insensitive_and_reports_unknown(self):
-        _lines, applied, missing = make_vr3.set_vars(
+        _lines, applied, missing = make_lung_model.set_vars(
             [VR3_LINE], {"R_TRACHEA_IN": 30, "not_a_variable": 1})
         self.assertEqual(len(applied), 1)
         self.assertEqual(missing, ["not_a_variable"])
 
     def test_list_vars(self):
-        mod, name, val, unit = make_vr3.list_vars([VR3_LINE])[0]
+        mod, name, val, unit = make_lung_model.list_vars([VR3_LINE])[0]
         self.assertEqual((mod, name, val), ("lung_model", "r_trachea_in", "6.000000"))
         self.assertTrue(unit.startswith("("))
 
@@ -101,10 +101,10 @@ class TestMakeVr3(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             vars_dir = Path(d) / "vars"
             self.assertEqual(
-                Path(make_vr3.resolve_out("scenarios/x.vr3", vars_dir)),
+                Path(make_lung_model.resolve_out("scenarios/x.vr3", vars_dir)),
                 vars_dir / "scenarios" / "x.vr3")
             self.assertEqual(
-                Path(make_vr3.resolve_out("x", vars_dir, outdir=d)),
+                Path(make_lung_model.resolve_out("x", vars_dir, outdir=d)),
                 Path(d) / "x.vr3")
 
     def test_sct_wrapper_handles_cross_drive(self):
@@ -113,9 +113,9 @@ class TestMakeVr3(unittest.TestCase):
             model = root / "vars" / "model.vr3"
             model.parent.mkdir(parents=True)
             model.write_bytes(b"x")
-            with patch("make_vr3.os.path.relpath",
+            with patch("make_lung_model.os.path.relpath",
                        side_effect=ValueError("path is on another drive")):
-                sct = Path(make_vr3.make_sct(str(model), root / "vars"))
+                sct = Path(make_lung_model.make_sct(str(model), root / "vars"))
             data = sct.read_bytes()
             self.assertNotIn(b"<ASLVarsDirectory>", data)
             self.assertIn(b"model.vr3", data)
@@ -127,7 +127,7 @@ class TestMakeVr3(unittest.TestCase):
             model = root / "vars" / "scenarios" / "model.vr3"
             model.parent.mkdir(parents=True)
             model.write_bytes(b"x")
-            sct = Path(make_vr3.make_sct(str(model), root / "vars", reps=1000))
+            sct = Path(make_lung_model.make_sct(str(model), root / "vars", reps=1000))
             data = sct.read_bytes()
             self.assertTrue(data.startswith(b"1000\t"))
             self.assertIn(b"<ASLVarsDirectory>", data)

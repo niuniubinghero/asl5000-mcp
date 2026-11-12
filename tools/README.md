@@ -5,7 +5,7 @@ They run straight from a source checkout with any Python >= 3.10 (standard libra
 
 | Script | Job | Output |
 |---|---|---|
-| `make_vr3.py` | Build new lung models from a `.vr3` template | `.vr3`, plus a matching `.sct` wrapper only when `--sct` is given |
+| `make_lung_model.py` | Build new lung models from a `.vr3` template | `.vr3`, plus a matching `.sct` wrapper only when `--sct` is given |
 | `build_script_index.py` | Index the vendor script library | 3 searchable CSV files |
 
 `_paths.py` is shared path discovery. All three are independent of `asl_monitor` and are shipped in
@@ -21,7 +21,7 @@ without crawling directories by hand.
 Data flow:
 
 ```
-make_vr3.py ──> model.vr3 [+ model.sct when --sct] ──> asl_load_script ──> asl_run ──> asl_set / asl_query_breath_params
+make_lung_model.py ──> model.vr3 [+ model.sct when --sct] ──> asl_load_script ──> asl_run ──> asl_set / asl_query_breath_params
 build_script_index.py ──> script_index.csv ──> pick a scenario ──> asl_load_script
 ```
 
@@ -33,7 +33,10 @@ The first column of `.sct` is a repetition count (default 1000) — **not** a br
 number of seconds (section 6.3 of the vendor manual). The index therefore reports the summed
 repetition count, not a duration.
 
-## make_vr3.py
+## make_lung_model.py
+
+Named for what it builds (a lung model and, optionally, the scenario script that loads it),
+not for a file extension: outputs are `.vr3` models plus optional `.sct` wrappers.
 
 `.vr3` is a plain TAB-separated variable table. The generator changes **only** the value field to the
 right of `=`; TAB alignment, spaces, CRLF line endings and non-ASCII bytes are preserved byte-for-byte
@@ -41,19 +44,19 @@ right of `=`; TAB alignment, spaces, CRLF line endings and non-ASCII bytes are p
 
 ```bash
 # List every variable in a template (no install root needed)
-python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
+python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
 
 # Model only (default: no .sct is written)
-python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" \
+python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" \
   --out "<scenario-dir>/hme_r21.vr3" --set r_trachea_in=21
 
 # Model + its .sct wrapper (add --sct; relative --out resolves under <ASL_ROOT>/vars)
-python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" \
+python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" \
   --out "<scenario-dir>/hme_r21.vr3" \
   --set r_trachea_in=21 --set r_trachea_out=23 --set spontaneous_breathing_rate=18 --sct
 
 # Batch mode
-python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
+python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
 ```
 
 `batch.json` is an array of `{"out": ..., "set": {...}, "sct": true, "reps": 1000}` objects. The
