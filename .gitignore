@@ -22,3 +22,7 @@ recordings/
 .idea/
 .vscode/
 Thumbs.db
+
+# Standalone tool outputs (local data, never commit)
+tools/output/
+script_index*.csv

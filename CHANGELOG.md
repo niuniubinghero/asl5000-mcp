@@ -15,6 +15,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `asl-monitor check` / `asl-monitor paths` for environment self-check and
   machine-specific path configuration.
 - Hardware-free unit tests for path discovery, TAI frame parsing and broadcast parsing.
+- `tools/make_vr3.py`: offline generator for `.vr3` lung models plus the matching
+  `.sct` wrapper required by `asl_run` (single model and JSON batch modes).
+- `tools/build_script_index.py`: 32-column CSV index of the vendor `vars/` and
+  `breath/` script libraries, including broken-reference and missing-wrapper checks.
+- `tools/_paths.py`: shared install-root discovery (`--asl-root`, `ASL_ROOT`,
+  `ASL_SW_PATH`); no machine-specific path in any tool.
+- 15 additional hardware-free tests for the two offline tools (38 total).
 
 ### Changed
 - Machine-specific absolute paths removed from the package. ASL software and TAI

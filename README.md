@@ -70,6 +70,20 @@ asl-monitor paths --sw "<path-to-ASL5000_SW3.6.exe>" --tai "<path-to-ASL_TAI.exe
 
 Environment variables `ASL_SW_PATH`, `ASL_TAI_EXE`, `ASL_ROOT`, `ASL_TAI_HOST`, `ASL_TAI_PORT`, `ASL_MONITOR_CONFIG` and `ASL_MONITOR_RECORDINGS` override everything.
 
+### Offline tools (source checkout)
+
+TAI cannot create or save `.vr3` models, and a real install has 1000+ scripts. Two standard-library
+scripts in `tools/` cover that gap (they do not talk to the simulator and are not part of the wheel):
+
+```bash
+python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
+python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
+```
+
+`make_vr3.py` builds model variants plus the `.sct` wrapper that `asl_run` requires;
+`build_script_index.py` produces a 32-column searchable CSV index of `vars/` and `breath/`.
+Both auto-detect the install root or take `--asl-root`. See [tools/README.md](tools/README.md).
+
 See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ---
@@ -128,6 +142,17 @@ asl-monitor paths --sw "<ASL5000 软件 exe>" --tai "<ASL_TAI.exe>"
 
 或在会话中让 Agent 调用 `asl_set_paths`。优先级：环境变量 > 用户配置文件 > 自动探测。
 
+### 离线工具（源码方式）
+
+TAI 没有生成/保存 `.vr3` 的能力，脚本库又常上千个文件。`tools/` 下有两个纯标准库脚本补齐这两块（不连设备、不随 wheel 分发）：
+
+```bash
+python tools/make_vr3.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --list
+python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
+```
+
+`make_vr3.py` 按模板批量造肺模型并生成 `asl_run` 必需的 `.sct` 包装；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。详见 [tools/README.md](tools/README.md)。
+
 ### 安全提醒
 
 - 启动仿真会驱动真实活塞，Skill 要求 Agent 先获得你的确认。
@@ -146,6 +171,7 @@ skill/asl-lung-sim/     identical copy for manual installation
 configs/                zero-absolute-path client snippets (pip mode)
 run_server.py           source-mode entry point
 docs/                   INSTALL / TROUBLESHOOTING / PROTOCOL
+tools/                  offline .vr3 generator + script index (source checkout)
 tests/                  hardware-free unit tests
 ```
 
