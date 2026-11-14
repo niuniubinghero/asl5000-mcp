@@ -18,13 +18,13 @@ The control host/port are configurable with `ASL_TAI_HOST` / `ASL_TAI_PORT`. Bro
 
 Each control command is a two-letter mnemonic followed by `name=value` pairs, terminated by CRLF. A successful reply contains an echo, optional data lines, and a fresh prompt; a failure contains `ERROR(YY)` plus a short reason. Commands are **strictly synchronous**: wait for the reply before sending the next one. The client retries once automatically on `ERROR(11)` ("previous command unfinished").
 
-Mnemonics used by the 21 MCP tools (described functionally, not copied from the vendor document):
+Mnemonics used by the TAI control tools (described functionally, not copied from the vendor document). `asl_prepare_recording` is local-only and has no TAI mnemonic:
 
 | Tool | Purpose |
 |---|---|
 | `asl_connect` | Open an ASL software instance (`OA`). Must be the first control command after connecting |
 | `asl_load_script` | Select a scenario file (`SF`) |
-| `asl_run` | Start a simulation (`RS`), optionally recording waveforms |
+| `asl_run` | Start a simulation (`RS`); the client defaults to `WF=1` because the vendor default `WF=0` saves no waveform files. `OW` defaults to 0; a same-name conflict is intercepted locally before `RS` is sent |
 | `asl_stop` / `asl_exit` | End the simulation (`ES`) / close the software and release the COM port (`EX`) |
 | `asl_tai_status` | Query run state, elapsed/remaining time, breath count and versions (`TC`) |
 | `asl_query_breath_params` | Per-breath analysis values (`BP`); the client supplies a CPAP-oriented default set |
@@ -47,5 +47,6 @@ Column names come from the vendor software, so the parsers locate columns by key
 ## Safety notes for implementers
 
 - Never parallelise control commands. Broadcast/monitoring calls are independent and may run concurrently.
+- The vendor writes its own recording group (`<NAME>.dtb/.rwb/...`) under `<ASL_ROOT>\ASLdata\` when `RS` has `WF=1`. This is separate from the CSV produced by the broadcast recorder. Check for a same-named group before sending `RS`; `OW=1` destroys the old group.
 - `EX` can crash the vendor software (see [TROUBLESHOOTING](TROUBLESHOOTING.md)); verify the real state afterwards.
 - Do not log to stdout in an MCP stdio server; the client redirects all diagnostics to stderr.

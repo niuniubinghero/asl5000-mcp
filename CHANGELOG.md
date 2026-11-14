@@ -5,7 +5,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `asl_prepare_recording` (22nd MCP tool): read-only preflight for the vendor recording
+  data group. Returns a recommended `<script>_<timestamp>` name, resolves the output
+  directory, detects an existing same-named group (file count, size, header-only check)
+  and offers overwrite / rename / `_N` suffix choices with ready-to-use `asl_run` kwargs.
+- `src/asl_monitor/recording.py`: hardware-free naming, path resolution and conflict
+  decision helpers, plus 33 new hardware-free unit tests (72 total).
+- Documentation of the vendor's own `.dtb/.rwb/.brb/...` recording group and the fact
+  that `.dtb` carries `Total Flow (L/min)`, absent from the 6343 broadcast CSV.
+
 ### Changed
+- `asl_run` keeps `wf=1` by default (the vendor `RS` default `WF=0` saves no waveform
+  files) and now defaults to `ow=0`: a same-name conflict returns `need_decision`
+  without sending `RS` until the user explicitly picks overwrite / rename / suffix.
+- `asl_export_waveform` follows the last successful run's NAME instead of the vendor
+  default `data`, which otherwise pointed at the wrong data group.
+- MCP instructions, the Skill (all three copies), README and PROTOCOL now require the
+  Agent to ask the user for the recording name, conflict strategy and output directory
+  before every run.
 - Renamed `tools/make_vr3.py` to `tools/make_lung_model.py`. The old name implied the
   tool only produced `.vr3` files, while it also writes optional `.sct` scenario
   wrappers and will gain a `--sct-only` mode. All command examples, the Skill copies,

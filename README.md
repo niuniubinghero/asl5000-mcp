@@ -18,11 +18,28 @@ Talk to your Agent in plain language: *"connect to the lung simulator, run the A
 |---|---|---|
 | Setup | `asl_env_check`, `asl_set_paths` | Detect ASL software / TAI server, list COM ports and the `vars/` script library |
 | Passive monitoring | `asl_check`, `asl_get_status`, `asl_snapshot`, `asl_start/stop_recording`, `asl_list_recordings` | Breath parameters + waveform statistics, snapshots, long-running CSV recording |
+| Recording preflight | `asl_prepare_recording` | Read-only naming / directory / same-name conflict check before every run |
 | Active control | `asl_tai_start`, `asl_connect`, `asl_load_script`, `asl_run`, `asl_stop`, `asl_exit`, `asl_tai_status` | Start TAI, open ASL, load a scenario, run/stop a simulation |
 | Analysis | `asl_query_breath_params`, `asl_export_waveform` | Per-breath parameters (PIP/PEEP/AutoPEEP/Vt/trigger delay/work of breathing), full waveform export |
 | Configuration | `asl_init`, `asl_aux`, `asl_set_interactive`, `asl_set` | FRC / tubing compensation, auxiliary circuit, live changes to lung mechanics and closed-loop targets |
 
-21 tools in total. The Skill encodes the operating order, hard constraints (serial control commands, never call `asl_exit` unless asked, confirm before moving the piston) and the error-code recovery table.
+22 tools in total. The Skill encodes the operating order, hard constraints (serial control commands, never call `asl_exit` unless asked, confirm before moving the piston) and the error-code recovery table.
+
+### Vendor recording files (kept by default)
+
+The vendor `RS` command defaults to `WF=0`, which saves **no** waveform files. This client
+always starts simulations with `wf=1`, so the ASL software writes its own data group
+(`<NAME>.dtb`, `.rwb`, `.brb`, `.avb`, `.aux`, `.vol`, `.tdms`, `.tdms_index`) into
+`<ASL_ROOT>\ASLdata\` — the same files the ASL GUI produces, and a different dataset from
+the broadcast CSV recordings. `.dtb` carries `Total Flow (L/min)`, which the 6343
+broadcast stream does not include.
+
+Before every `asl_run`, call `asl_prepare_recording` (read-only, no TAI command) and let the
+user decide: the recording name (recommended `<script>_<timestamp>` or custom), the output
+directory (default `\ASLDATA` or custom), and — if a same-named group already exists —
+overwrite / rename / append `_1`. `asl_run` refuses to send `RS` on a conflict unless the
+user explicitly chose overwrite. `asl_export_waveform` follows the last successful run's
+name automatically.
 
 ### Requirements
 
@@ -91,7 +108,7 @@ See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESH
 
 ## 中文
 
-用自然语言对 Agent 说：「连模拟肺，跑 Adult_normal 场景，把 C1 改成 50 前后各取一次 PEEP 对比」。Agent 通过 `asl-monitor` 的 21 个工具完成，`asl-lung-sim` Skill 负责约束操作顺序与安全边界。
+用自然语言对 Agent 说：「连模拟肺，跑 Adult_normal 场景，把 C1 改成 50 前后各取一次 PEEP 对比」。Agent 通过 `asl-monitor` 的 22 个工具完成，`asl-lung-sim` Skill 负责约束操作顺序与安全边界。
 
 ### 能力一览
 
@@ -99,9 +116,21 @@ See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESH
 |---|---|---|
 | 部署自检 | `asl_env_check`、`asl_set_paths` | 检测软件/服务器、端口、COM 口清单与 `vars/` 脚本库 |
 | 被动监控 | `asl_check`、`asl_get_status`、`asl_snapshot`、`asl_start/stop_recording`、`asl_list_recordings` | 呼吸参数 + 波形统计、快照、长程 CSV 录波 |
+| 录制预检 | `asl_prepare_recording` | 每次启动前只读检查命名、目录与同名冲突 |
 | 主动控制 | `asl_tai_start`、`asl_connect`、`asl_load_script`、`asl_run`、`asl_stop`、`asl_exit`、`asl_tai_status` | 拉起 TAI、连机、加载脚本、启动/停止仿真 |
 | 参数分析 | `asl_query_breath_params`、`asl_export_waveform` | 逐口参数（PIP/PEEP/AutoPEEP/Vt/触发响应时间/做功）、完整波形导出 |
 | 实时配置 | `asl_init`、`asl_aux`、`asl_set_interactive`、`asl_set` | FRC/管路补偿、辅助回路、运行中改肺模型与闭环目标 |
+
+### 厂商原始数据默认保留
+
+TAI 的 `RS` 命令厂商默认 `WF=0`（**不保存波形文件**），本包统一用 `wf=1` 启动，让 ASL 软件自己把
+`<NAME>.dtb/.rwb/.brb/.avb/.aux/.vol/.tdms/.tdms_index` 写到 `<ASL_ROOT>\ASLdata\` —— 与 GUI 手动录制是同一套文件，
+和广播口旁听生成的 CSV 是两套独立数据；`.dtb` 里有 6343 广播流缺失的 `Total Flow (L/min)`。
+
+每次 `asl_run` 之前必须调 `asl_prepare_recording`（只读、不发 TAI 命令），由**用户**决定三件事：
+录制数据文件名（推荐 `<脚本名>_<时间戳>` 或自定义）、保存目录（默认 `\ASLDATA` 或自定义）、
+同名数据已存在时（覆盖 / 改名 / 末尾加 `_1`）。同名冲突且用户未选覆盖时，`asl_run` 直接返回
+`need_decision` 且**不发 RS**。`asl_export_waveform` 不传名字时自动跟随最近一次成功启动的 NAME。
 
 ### 两种安装方式
 

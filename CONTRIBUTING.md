@@ -49,7 +49,7 @@ or simply copy `src/asl_monitor/data/SKILL.md` to `skill/asl-lung-sim/SKILL.md`.
 
 Describe the hardware/firmware/ASL version you tested against (if any), include
 the `asl-monitor check` output with paths redacted, and note any change to the
-21 MCP tool signatures — downstream Skills depend on them.
+22 MCP tool signatures — downstream Skills depend on them.
 
 ## Roadmap / TODO
 

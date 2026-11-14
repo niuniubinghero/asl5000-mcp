@@ -1,6 +1,6 @@
 # Offline tools / 离线工具
 
-Two standalone scripts. They do **not** talk to the simulator and are not part of the 21 MCP tools.
+Two standalone scripts. They do **not** talk to the simulator and are not part of the 22 MCP tools.
 They run straight from a source checkout with any Python >= 3.10 (standard library only).
 
 | Script | Job | Output |

@@ -31,14 +31,23 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 4. **启动前必查状态**：调用 `asl_get_status` 确认当前是否已有仿真在运行。
    - 若返回了正常呼吸数据（Breath Number 在增长）= 仿真已在跑，**禁止直接 `asl_run`**（会报 ERROR(03)）；先问用户是沿用当前仿真，还是 `asl_stop` 后重新加载脚本。
    - 若无数据 / 超时 = 空闲态，可安全启动。
-5. `asl_run(wf=1, name="数据名")` — `wf=1` 录波形；**启动仿真前必须经用户确认**（活塞会真实运动）。
-6. 数据采集（与控制通道独立，仿真运行中随时可用）：
+5. **启动前必做：录制数据预检 + 询问用户**。调用 `asl_prepare_recording`（纯只读，不发 TAI 命令），
+   拿到 `recommended_name` / `resolved_dir` / `conflict` / `conflict_options`，然后用提问工具
+   **一次性问用户三个问题**，不许替用户决定：
+   - **录制数据文件名**：用推荐名 `<脚本名>_<YYYYMMDD_HHMMSS>`，还是用户自定义（用户给出名字后带 `name=` 再预检一次）；
+   - **保存目录**：厂商默认 `\ASLDATA`（即 `<ASL_ROOT>\ASLdata`），还是用户自定义（给出路径后带 `path=` 再预检一次）；
+   - **同名冲突**（`conflict=true` 时）：**覆盖 / 改名 / 末尾加 `_1`**（`conflict_options` 里每个选项都附好 `run_kwargs`）。
+   最后把用户选中的 `run_kwargs` 原样传给 `asl_run`。
+6. `asl_run(wf=1, name=..., ow=...)` — `wf=1` 默认保留厂商原始留存数据组（厂商 RS 的 `WF` 默认是 **0 = 不保存**，本包默认强制保留）；
+   `ow=0` 默认不覆盖，同名数据组已存在时直接返回 `need_decision` 且**不发 RS**，等用户选定策略后再调用。
+   **启动仿真前必须经用户确认**（活塞会真实运动）。
+7. 数据采集（与控制通道独立，仿真运行中随时可用）：
    - `asl_get_status` 单次取当前呼吸参数 + 波形统计。
    - `asl_start_recording` / `asl_stop_recording` 长程录波，CSV 落盘到用户数据目录的 `recordings/`。
    - `asl_query_breath_params` 逐口分析参数（缺省集已含 CPAP 调试关键项：P_PEAK / PEEP / AutoPEEP / Vt / 触发响应时间 / 做功）。
-   - `asl_export_waveform` 导出某一口完整波形为文本。
-7. 运行中实时改模拟肺参数：`asl_set_interactive(True)` → `asl_set({"C1":50,"RATE":20,...})` → 观察效果 → `asl_set_interactive(False)`。
-8. 收尾：`asl_stop` 停在 IDLE，**默认保持连接**。仅当用户明确要求"断开模拟肺 / 释放串口"时才追加 `asl_exit`，且必须按第 2 节核实主机真停。
+   - `asl_export_waveform` 导出某一口完整波形为文本；`name` 留空自动跟随本次会话最近一次成功 `asl_run` 的 NAME。
+8. 运行中实时改模拟肺参数：`asl_set_interactive(True)` → `asl_set({"C1":50,"RATE":20,...})` → 观察效果 → `asl_set_interactive(False)`。
+9. 收尾：`asl_stop` 停在 IDLE，**默认保持连接**。仅当用户明确要求"断开模拟肺 / 释放串口"时才追加 `asl_exit`，且必须按第 2 节核实主机真停。
 
 ## 2. 硬约束
 
@@ -48,6 +57,7 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 - `asl_exit`（EX）会关闭 ASL 软件并释放 COM 口：**仅在用户明确要求断开时调用**。测试结束后默认保持连接、停在 IDLE 即可。
 - **EX 有两种结果（已验证行为）**：EX 返回 `ok` = 干净退出，主机停止、COM 口释放、ASL 进程消失；EX 返回超时（ERROR 08）= 厂商软件崩溃，此时主机**可能脱离 PC 自主继续跑已加载脚本**（活塞仍动，但 PC 侧已无 ASL 实例：TC 报 03「无软件实例」或 15「被外部关闭」，广播端口检测不到）。**唯一停法**：重新 `asl_connect`(OA) 连回 → `asl_stop`(ES) → `asl_tai_status` 确认 IDLE。EX 之后必须核实真实状态，不能假定「退出成功 = 硬件停了」。
 - 仿真启动会让真实活塞运动，操作前必须获得用户确认。
+- **不许跳过 `asl_prepare_recording` 直接 `asl_run`**；不许替用户决定名字、目录或「覆盖 / 改名 / 加后缀」。`ow=1` 只能在用户明确选择覆盖后传入，`wf` 不许擅自改成 0（会丢掉厂商原始数据）。
 
 ## 3. 错误码速查
 
@@ -56,7 +66,7 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 | 03 | 命令不可用（状态不对） | OA 报 03 = 先关手动 ASL 实例；TC/BP 报 03 = 先 `asl_connect`；**RS 报 03 = 仿真已在运行**，先 `asl_get_status` 查状态 |
 | 05 | 参数值非法 | 检查 id（COM1-8 / DEMO / 序列号）与参数名 |
 | 11 | 上一条命令未完成 | 客户端已自动重连重试一次；仍报则等几秒重试 |
-| 13 | 文件已存在 / 写失败 | `asl_run` 传 `ow=1` 或换 name |
+| 13 | 文件已存在 / 写失败 | 现在由 `asl_prepare_recording` 提前拦截（返回 `need_decision`、不发 RS）；用户明确选「覆盖」才传 `ow=1`，否则改名 / 加后缀 |
 | 14 | SF: 脚本文件不存在 | 检查 name/path 拼写；路径分隔符用 `\`；`.vr3` 见第 5 节生成 .sct 包装 |
 | 16 | 无法设置参数 | 先 `asl_set_interactive(True)`；该参数当前肺模型可能不支持 |
 | 18 | 参数越界 | 呼吸号超出总口数；用 -1 取最后一口 |
@@ -68,6 +78,13 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 - 对比调参效果：改参数前后各调一次 `asl_query_breath_params` 或抓 `asl_snapshot`，对比 PEEP / Vt / 触发响应时间 / 做功变化。
 - 波形 CSV 可直接用 pandas 分析；录波会话在 `recordings/<会话>/`，路径由 `asl-monitor check` 输出。
 - 长程录波建议分段（`split_sec`），并开启 `wall_time` 以便与其它日志按时间对齐。
+- **厂商原始留存数据（TAI 控制与 GUI 操作是同一套）**：`asl_run(wf=1)` 由 ASL 软件写出
+  `<ASL_ROOT>\ASLdata\<NAME>.*`，8 个文件一组（`.dtb` / `.rwb` / `.brb` / `.avb` / `.aux` / `.vol` / `.tdms` / `.tdms_index`），
+  与广播 CSV 是两套独立数据，归档时整组一起拷走。`.dtb` 含 `Total Flow (L/min)`，而 6343 广播 CSV **没有**流量列。
+  `.dtb` / `.rwb` 若只有 500 字节 = 仅头部、没有波形数据体。
+- `asl_export_waveform()` 不传 `name` 时跟随本次会话最近一次成功 `asl_run` 的 NAME；厂商 BW 的 NAME 默认是 `data`，
+  不跟随会指向错误的旧数据组。
+- 大文件在 `asl_stop`(ES) 正常结束后才写全；`asl_exit` 超时导致厂商软件崩溃时可能丢失原始数据。
 
 ## 5. `.vr3` 模型文件必须配 `.sct` 包装
 
@@ -84,7 +101,7 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 
 然后 `asl_load_script(name="<脚本名>", path="\\VARS\\<子目录>")`（不带扩展名），再 `asl_run`。官方场景目录里 `.sct` 与同名 `.vr3` 成对存在，可作为格式参考。
 
-**批量造模型请用仓库自带的离线工具**：`tools/make_lung_model.py` 按模板改写 `.vr3` 变量；**显式加 `--sct` 才同时写出同名 `.sct` 包装，默认只出模型**，支持单个 `--set` 与 `--from-json` 批量模式；安装根由 `--asl-root` / `ASL_ROOT` 自动探测。用法与参数见 `tools/README.md`（源码方式运行，不随 wheel 安装、**不在 21 个 MCP 工具里**）。
+**批量造模型请用仓库自带的离线工具**：`tools/make_lung_model.py` 按模板改写 `.vr3` 变量；**显式加 `--sct` 才同时写出同名 `.sct` 包装，默认只出模型**，支持单个 `--set` 与 `--from-json` 批量模式；安装根由 `--asl-root` / `ASL_ROOT` 自动探测。用法与参数见 `tools/README.md`（源码方式运行，不随 wheel 安装、**不在 22 个 MCP 工具里**）。
 
 - 模板需自备：从本机 `<ASL_ROOT>/vars/scenarios/` 挑一个官方 `.vr3`。本仓库出于合规与体积考虑**不分发** `.vr3` 模型、脚本清单 CSV、厂商可执行文件或厂商文档。
 - 生成阶段写 `.sct` 是**可选**的（省略 `--sct` 就只出 `.vr3`）；但**加载阶段**必须有同名 `.sct`，否则 `asl_run` 报 ERROR(14)。两者别混淆。

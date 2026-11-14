@@ -14,7 +14,7 @@ ASL 5000 模拟肺通用 MCP Server (监控 + TAI 控制) —— 客户端无关
 运行: 由 MCP 客户端以 stdio 方式拉起, 无需手动运行。
 各客户端配置见 configs/ 与 docs/INSTALL.md; 也可用 asl-monitor install 生成。
 
-工具列表 (21 个):
+工具列表 (22 个):
   -- 接入自检与部署 --
   asl_env_check(detail_dir)         【会话首次必调】环境就绪度检测 + COM口清单 + 脚本库 + 下一步指引
   asl_set_paths(sw_path, tai_exe)   检测不到 ASL 时, 保存用户提供的路径 (立即生效, 免重启)
@@ -25,16 +25,18 @@ ASL 5000 模拟肺通用 MCP Server (监控 + TAI 控制) —— 客户端无关
   asl_start_recording(...)          开始后台录波 (生成 CSV + latest_status.json)
   asl_stop_recording()              停止录波, 返回会话汇总
   asl_list_recordings()             列出历史录波会话
-  -- 控制 (TAI 命令通道 6341, 主动, 见 tai_control.py) --
+  -- 厂商原始数据预检 (只读, 无硬件依赖) --
+  asl_prepare_recording(...)        【asl_run 之前必调】推荐名 + 同名冲突 + 覆盖/改名/_N 候选 + 目录选项
+  -- 控制 (TAI 命令通道 6341, 主动, 见 tai.py) --
   asl_tai_start()                   确认/拉起 TAI 服务器 (ASL_TAI.exe)
   asl_connect(id, path, gui)        打开 ASL 软件实例 (OA): id=COM1-8/DEMO/序列号
   asl_load_script(name, path)       加载仿真脚本 .sct (SF)
-  asl_run(name, wf, ow, path)       启动仿真 (RS)
+  asl_run(name, wf, ow, path)       启动仿真 (RS), 默认 wf=1 保留厂商原始数据组
   asl_stop()                        结束仿真 (ES)
   asl_exit()                        退出 ASL 软件 (EX)
   asl_tai_status()                  查询仿真状态/版本/呼吸计数 (TC)
   asl_query_breath_params(...)      逐口呼吸分析参数 (BP, 80+ 项可选)
-  asl_export_waveform(...)          导出某口呼吸完整波形为 tab 分隔文件 (BW)
+  asl_export_waveform(...)          导出某口呼吸完整波形为 tab 分隔文件 (BW), 默认跟随上次 run 的 NAME
   asl_init(...)                     仿真初始化 FRC/管路补偿 (SI)
   asl_aux(...)                      辅助回路阻抗/顺应性 (AC)
   asl_set_interactive(on)           进入/退出交互模式 (IM/SM)
@@ -55,6 +57,7 @@ from pathlib import Path
 
 from . import config as cfg
 from . import monitor as am
+from . import recording as rec
 from . import tai as tc
 
 # Log to stderr: stdout is reserved for the MCP stdio protocol.
@@ -73,11 +76,17 @@ mcp = FastMCP(
         "典型自动化测试流程: "
         "1) asl_tai_start 确认 TAI 服务器在线 → "
         "2) asl_connect(id=<COM 口>) 打开 ASL 软件 (先 asl_env_check 查 COM 口; 无硬件时 id='DEMO') → "
-        "3) asl_load_script 加载脚本 → asl_run 启动仿真 → "
-        "4) 用监控工具 (asl_get_status/asl_snapshot/asl_start_recording) 收数据, "
+        "3) asl_load_script 加载脚本 → "
+        "4) 【必须】asl_prepare_recording 只读预检, 然后用提问工具让用户决定: "
+        "录制数据文件名 (推荐名/自定义)、保存目录 (默认 \\ASLDATA/自定义)、"
+        "同名已存在时 (覆盖/改名/末尾加 _1), 把用户选择原样传给 asl_run → "
+        "5) asl_run(wf=1) 启动仿真, 默认保留厂商原始留存数据组 → "
+        "6) 用监控工具 (asl_get_status/asl_snapshot/asl_start_recording) 收数据, "
         "或 asl_query_breath_params 取逐口分析参数 → "
-        "5) asl_set_interactive(True) + asl_set 可在仿真运行中实时改肺模型/用力/闭环参数 → "
-        "6) asl_stop / asl_exit 收尾。"
+        "7) asl_set_interactive(True) + asl_set 可在仿真运行中实时改肺模型/用力/闭环参数 → "
+        "8) asl_stop / asl_exit 收尾。"
+        "不许自行决定覆盖或改名, 不许跳过询问直接 asl_run; "
+        "厂商原始数据由 ASL 软件写在 <ASL_ROOT>\\ASLdata\\<NAME>.* , 与广播 CSV 是两套独立数据。"
         "控制命令同步执行, 必须等上一条响应; 广播端口随 ASL 软件自动开启, 与控制通道互不依赖。"
     ),
 )
@@ -90,6 +99,11 @@ _rec = {
     "outdir": None,
     "error": None,
 }
+
+# ---- 厂商录制数据的会话状态 (MCP server 进程内) ----
+# script: 最近一次成功加载的脚本名 (用于生成推荐名)
+# run_name: 最近一次成功启动仿真的 RS NAME (BW 导出默认跟随它)
+_session = {"script": "", "run_name": ""}
 
 
 def _j(payload) -> str:
@@ -368,6 +382,24 @@ def asl_list_recordings() -> str:
     return _j({"root": str(RECORDINGS_ROOT), "count": len(items), "items": items})
 
 
+# ---------------------------------------------------------------- 厂商原始数据预检 (只读)
+
+@mcp.tool()
+def asl_prepare_recording(name: str = "", path: str = "", script: str = "") -> str:
+    """【每次 asl_run 之前必调, 纯只读, 不发 TAI 命令/不写文件】为厂商原始留存数据做预检。
+
+    返回 recommended_name (推荐名)、resolved_dir、conflict (是否已有同名数据组)、
+    existing_group (旧文件清单/大小/是否只有空头)、conflict_options 与 default_run_kwargs。
+    拿到结果后必须用提问工具让用户决定三件事, 不许自行决定:
+      1) 录制数据文件名: 用推荐名, 还是自定义 (用户给出名字后带 name= 再调本工具重新预检);
+      2) 保存目录: 默认 \\ASLDATA, 还是自定义 (用户给出路径后带 path= 再调本工具重新预检);
+      3) 若 conflict=true: 覆盖 / 改名 / 末尾加 _1 (conflict_options 里有各选项对应的 run_kwargs)。
+    最后把用户选中的 run_kwargs 原样传给 asl_run。script 留空时自动用最近加载的脚本名生成推荐名。
+    wf 恒为 1: 厂商 RS 的 WF 默认是 0 (不保存波形), 本包默认保留厂商原始数据组。
+    """
+    return _j(rec.prepare(name=name, script=script.strip() or _session["script"], path=path))
+
+
 # ================================================================ 环境自检 (接入即初始化)
 
 def _list_com_ports() -> list[dict]:
@@ -554,18 +586,71 @@ def asl_load_script(name: str, path: str = "") -> str:
     args = [f"name={name}"]
     if path:
         args.append(f"path={path}")
-    return _tai_run("sf " + " ".join(args))
+    out = _tai_run("sf " + " ".join(args))
+    try:
+        if json.loads(out).get("ok"):
+            _session["script"] = name
+    except json.JSONDecodeError:
+        pass
+    return out
 
 
 @mcp.tool()
-def asl_run(name: str = "data", wf: int = 1, ow: int = 1, path: str = "") -> str:
-    """启动仿真 (TAI RS 命令)。name=录制数据文件名; wf=1 保存波形; ow=1 覆盖已存在文件;
-    path=保存目录 (相对 ASL 路径需以 \\ 开头, 默认 \\ASLDATA)。
-    仿真启动后即可用 asl_get_status / asl_start_recording 收实时数据。"""
-    args = [f"wf={wf}", f"ow={ow}", f"name={name}"]
-    if path:
-        args.append(f"path={path}")
-    return _tai_run("rs " + " ".join(args))
+def asl_run(name: str = "data", wf: int = 1, ow: int = 0, path: str = "") -> str:
+    """启动仿真 (TAI RS 命令) 并保留厂商原始留存数据组。
+
+    wf=1 (默认): 保存波形。厂商 RS 的 WF 默认为 0 (不保存), 本包默认强制保留。
+    name: 录制数据文件名 (不带扩展名), 由 asl_prepare_recording 预检 + 用户确认后传入。
+    ow=0 (默认): 不覆盖。同名数据组已存在时直接返回 need_decision, 不发 RS,
+          由用户选择「覆盖 (ow=1) / 改名 / 末尾加 _1」后再调用。
+    path: 保存目录。空串 = 厂商默认 \\ASLDATA; 也接受绝对路径或 \\ 开头相对 ASL 安装根。
+    必须先调 asl_prepare_recording 并让用户决定名字/冲突策略/目录; 活塞会真实运动, 需用户确认。
+    仿真正常停止 (asl_stop/ES) 后, <NAME>.dtb/.rwb 等大文件才写全。
+    """
+    chk = rec.check_run(name, wf, ow, path)
+    if chk["action"] != "run":
+        block = {"ok": False, "need_decision": chk["action"] == "need_decision"}
+        for key in ("error", "hint", "name", "resolved_dir", "existing_group", "options"):
+            if key in chk:
+                block[key] = chk[key]
+        return _j(block)
+
+    directory = Path(chk["resolved_dir"])
+    if not chk["dir_exists"]:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            chk["notes"].append(f"已创建保存目录 {directory}")
+        except OSError as e:
+            return _j({"ok": False, "error": f"保存目录不可用: {e}",
+                       "resolved_dir": str(directory)})
+
+    args = [f"wf={chk['wf']}", f"ow={chk['ow']}", f"name={chk['name']}"]
+    if path.strip():
+        args.append(f'path="{path.strip()}"')
+    try:
+        payload = json.loads(_tai_run("rs " + " ".join(args)))
+    except json.JSONDecodeError:
+        payload = {"ok": False, "error": "RS 返回无法解析"}
+    if payload.get("ok"):
+        _session["run_name"] = chk["name"]
+
+    existing = chk["existing_group"]
+    payload["recording"] = {
+        "name": chk["name"],
+        "wf": chk["wf"],
+        "ow": chk["ow"],
+        "vendor_path": chk["vendor_path"],
+        "resolved_dir": chk["resolved_dir"],
+        "existing_group_before_run": existing if existing["exists"] else None,
+        "expected_files": chk["expected_files"],
+        "hint": "厂商原始数据由 ASL 软件写出; 正常 asl_stop(ES) 后大文件才完整",
+    }
+    if existing["exists"] and chk["ow"]:
+        payload["warning"] = ("已覆盖原有整组厂商原始文件, 不可恢复: "
+                              + ", ".join(f["name"] for f in existing["files"]))
+    if chk["notes"]:
+        payload["notes"] = chk["notes"]
+    return _j(payload)
 
 
 @mcp.tool()
@@ -628,14 +713,22 @@ def asl_query_breath_params(params: str = "", breath_num: int = -1,
 
 
 @mcp.tool()
-def asl_export_waveform(name: str = "data", breath_num: int = -1,
+def asl_export_waveform(name: str = "", breath_num: int = -1,
                         out_name: str = "BW_OUTPUT", raw: bool = False) -> str:
     """导出某口呼吸的完整波形为 tab 分隔文本文件 (TAI BW 命令)。
-    name=RS 录制时用的数据名; breath_num 呼吸号 (-1=最后一口); raw=True 输出原始 ADC 波形。
-    返回文件路径 (默认在 ASL 目录 \\ASLDATA 下), 可用 Read 工具直接读取分析。"""
-    args = [f"name={name}", f"breath_num={breath_num}",
+    name=RS 录制时用的数据名; 留空自动跟随本次会话最近一次成功 asl_run 的 NAME (否则 data),
+    避免厂商默认 data 指向错误的旧数据组。breath_num 呼吸号 (-1=最后一口);
+    raw=True 输出原始 ADC 波形。返回文件路径 (默认在 ASL 目录 \\ASLDATA 下)。"""
+    data_name = (rec.sanitize_name(name) if name.strip()
+                 else (_session["run_name"] or "data"))
+    args = [f"name={data_name}", f"breath_num={breath_num}",
             f"outname={out_name}", f"raw={'TRUE' if raw else 'FALSE'}"]
-    return _tai_run("bw " + " ".join(args))
+    try:
+        payload = json.loads(_tai_run("bw " + " ".join(args)))
+    except json.JSONDecodeError:
+        payload = {"ok": False, "error": "BW 返回无法解析"}
+    payload["used_name"] = data_name
+    return _j(payload)
 
 
 @mcp.tool()
