@@ -25,4 +25,8 @@ Thumbs.db
 
 # Standalone tool outputs (local data, never commit)
 tools/output/
+output/
 script_index*.csv
+
+# WorkBuddy session data (local notes, never commit)
+.workbuddy/
