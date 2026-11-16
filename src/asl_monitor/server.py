@@ -14,7 +14,7 @@ ASL 5000 模拟肺通用 MCP Server (监控 + TAI 控制) —— 客户端无关
 运行: 由 MCP 客户端以 stdio 方式拉起, 无需手动运行。
 各客户端配置见 configs/ 与 docs/INSTALL.md; 也可用 asl-monitor install 生成。
 
-工具列表 (22 个):
+工具列表 (25 个):
   -- 接入自检与部署 --
   asl_env_check(detail_dir)         【会话首次必调】环境就绪度检测 + COM口清单 + 脚本库 + 下一步指引
   asl_set_paths(sw_path, tai_exe)   检测不到 ASL 时, 保存用户提供的路径 (立即生效, 免重启)
@@ -41,6 +41,10 @@ ASL 5000 模拟肺通用 MCP Server (监控 + TAI 控制) —— 客户端无关
   asl_aux(...)                      辅助回路阻抗/顺应性 (AC)
   asl_set_interactive(on)           进入/退出交互模式 (IM/SM)
   asl_set(params)                   仿真运行中实时改肺模型/呼吸用力/闭环 (IC)
+  -- 厂商原始数据解析 (只读, 无 TAI 依赖, 见 vendor_data.py) --
+  asl_vendor_scan(path, deep)       扫描厂商数据组目录: 每组文件/大小/行数/时长/采样率
+  asl_vendor_read(name, ext, ...)   读取某文件的自描述头、列名、各列统计与预览行 (.rwb/.dtb/.brb/.avb)
+  asl_vendor_export(name, ext, ...) 把某文件导出为 CSV (UTF-8 BOM)
 """
 
 from __future__ import annotations
@@ -59,6 +63,7 @@ from . import config as cfg
 from . import monitor as am
 from . import recording as rec
 from . import tai as tc
+from . import vendor_data as vd
 
 # Log to stderr: stdout is reserved for the MCP stdio protocol.
 am.log = lambda msg: print(f"[asl_monitor] {msg}", file=sys.stderr, flush=True)
@@ -86,7 +91,8 @@ mcp = FastMCP(
         "7) asl_set_interactive(True) + asl_set 可在仿真运行中实时改肺模型/用力/闭环参数 → "
         "8) asl_stop / asl_exit 收尾。"
         "不许自行决定覆盖或改名, 不许跳过询问直接 asl_run; "
-        "厂商原始数据由 ASL 软件写在 <ASL_ROOT>\\ASLdata\\<NAME>.* , 与广播 CSV 是两套独立数据。"
+        "厂商原始数据由 ASL 软件写在 <ASL_ROOT>\\ASLdata\\<NAME>.* , 与广播 CSV 是两套独立数据; "
+        "可用 asl_vendor_scan / asl_vendor_read / asl_vendor_export 只读解析厂商数据组。"
         "控制命令同步执行, 必须等上一条响应; 广播端口随 ASL 软件自动开启, 与控制通道互不依赖。"
     ),
 )
@@ -791,6 +797,130 @@ def asl_set(params: dict) -> str:
         return _j({"ok": False, "error": f"{type(e).__name__}: {e}"})
     return _j({"ok": True, "applied": params,
                "current_values": tc.parse_kv_lines(lines), "raw": lines})
+
+
+# ---------------------------------------------------------------- 厂商原始数据解析 (只读)
+
+def _vendor_dir(path: str = "") -> Path | None:
+    """厂商数据目录: 空 = <ASL_ROOT>\\ASLdata; 也接受绝对目录或 \\ 开头相对 ASL 根。"""
+    return rec.resolve_data_dir(path)
+
+
+def _vendor_array(g: vd.DataGroup, ext: str):
+    """按扩展名取该组的一个解析数组; 不支持的类型返回 None。"""
+    e = "." + ext.lower().lstrip(".")
+    if e in (".rwb", ".dtb"):
+        return g.wave(e)
+    if e == ".brb":
+        return g.breaths()
+    if e == ".avb":
+        return g.model()
+    return None
+
+
+@mcp.tool()
+def asl_vendor_scan(path: str = "", deep: bool = True, name: str = "") -> str:
+    """扫描厂商原始录制数据组目录 (默认 <ASL_ROOT>\\ASLdata; 可传绝对目录或 \\ 开头相对 ASL 根)。
+    返回每组元数据: 同名文件清单与大小、.rwb/.dtb 行列数、时长、采样率、.brb 逐呼吸行数、.avb 快照行数。
+    deep=False 只清点文件名与尺寸 (快); deep=True 解析二进制头与数据体 (每组多花一点时间)。
+    name 可传组名或子串 (大小写不敏感) 只返回匹配的组。
+    纯只读, 不发 TAI 命令, 不依赖 ASL 软件在线。"""
+    directory = _vendor_dir(path)
+    if directory is None or not Path(directory).is_dir():
+        return _j({"ok": False, "error": f"厂商数据目录不存在: {directory}",
+                   "hint": "先 asl_set_paths 提供 ASL 软件路径 (目录取 <安装根>\\ASLdata), "
+                           "或直接传数据目录的绝对路径"})
+    groups = vd.scan_dir(directory, deep=deep)
+    if name.strip():
+        key = name.strip().casefold()
+        groups = [g for g in groups if key in str(g.get("name", "")).casefold()]
+    return _j({"ok": True, "directory": str(directory), "count": len(groups),
+               "groups": groups,
+               "hint": "asl_vendor_read(name=<组名>, ext='rwb'|'dtb'|'brb'|'avb') 看列名/统计/预览; "
+                       "asl_vendor_export 导出 CSV"})
+
+
+@mcp.tool()
+def asl_vendor_read(name: str, ext: str = "rwb", path: str = "",
+                    columns: str = "", preview_rows: int = 3) -> str:
+    """读取一组厂商录制数据里的一个二进制文件 (.rwb/.dtb/.brb/.avb, 缺省 .rwb 波形)。
+    返回: 自描述头解析结果 (头长度/行列数/解析备注)、全部列名、各列统计 (min/max/mean)、
+    前 preview_rows 行实际值 (默认 3, 0=不给)。columns 可逗号分隔列名或索引 (如 'Time (sec),5')。
+    数据体是大端 float32; .dtb 的 500B 头被厂商截断, 第 13-16 列无可靠标签 (保留 dtb_colNN)。
+    .aux/.vol 是 ASCII 表 (本机实测通常只有表头), .tdms 仅元数据, 均不适用本工具。
+    纯只读; 要完整原始数据用 asl_vendor_export 导出 CSV。"""
+    directory = _vendor_dir(path)
+    if directory is None or not Path(directory).is_dir():
+        return _j({"ok": False, "error": f"厂商数据目录不存在: {directory}",
+                   "hint": "先 asl_set_paths 或 asl_vendor_scan 确认目录"})
+    e = "." + ext.lower().lstrip(".")
+    g = vd.DataGroup(Path(directory), name)
+    if not g.path(e).is_file():
+        siblings = sorted(p.name for p in Path(directory).iterdir()
+                          if p.is_file()
+                          and p.name.casefold().startswith(name.casefold() + "."))
+        return _j({"ok": False, "error": f"{name}{e} 不存在于 {directory}",
+                   "existing_files": siblings,
+                   "hint": "组名不含扩展名; ext 用 rwb/dtb/brb/avb"})
+    try:
+        arr = _vendor_array(g, e)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return _j({"ok": False, "error": f"解析失败: {exc}", "group": name, "ext": e})
+    if arr is None:
+        return _j({"ok": False, "error": f"不支持的文件类型: {e}",
+                   "hint": "本工具只解析 .rwb/.dtb/.brb/.avb 二进制数据体"})
+    idxs, err = vd.select_columns(arr, columns)
+    if err:
+        return _j({"ok": False, "error": err, "labels": arr.labels})
+    sel = idxs if idxs is not None else list(range(arr.ncols))
+    return _j({"ok": True, "group": name, "file": arr.path.name,
+               "summary": arr.summary(),
+               "labels": {str(i): lab for i, lab in enumerate(arr.labels)},
+               "stats": vd.stats_block(arr, sel),
+               "preview_rows": vd.preview_block(arr, sel, preview_rows),
+               "notes": arr.notes,
+               "hint": "完整数据用 asl_vendor_export(name=..., ext=...) 导出 CSV"})
+
+
+@mcp.tool()
+def asl_vendor_export(name: str, ext: str = "rwb", path: str = "",
+                      out: str = "", columns: str = "") -> str:
+    """把某组厂商数据里的一个二进制文件导出为 CSV (UTF-8 BOM, Excel/WPS 可直接打开)。
+    out 缺省写到 <recordings>\\vendor\\<NAME><ext>.csv (recordings 目录见 asl-monitor check);
+    columns 语义同 asl_vendor_read (留空=全部列)。.rwb 可达数万行, 导出需几秒。
+    只读源文件, 只写目标 CSV; 已存在的 out 会被覆盖, 覆盖前先向用户确认。"""
+    directory = _vendor_dir(path)
+    if directory is None or not Path(directory).is_dir():
+        return _j({"ok": False, "error": f"厂商数据目录不存在: {directory}",
+                   "hint": "先 asl_set_paths 或 asl_vendor_scan 确认目录"})
+    e = "." + ext.lower().lstrip(".")
+    g = vd.DataGroup(Path(directory), name)
+    if not g.path(e).is_file():
+        return _j({"ok": False, "error": f"{name}{e} 不存在于 {directory}",
+                   "hint": "先 asl_vendor_scan 查可用组名"})
+    out_path = (Path(out.strip()) if out.strip()
+                else RECORDINGS_ROOT / "vendor" / f"{name}{e}.csv")
+    if out_path.exists():
+        return _j({"ok": False, "error": f"目标 CSV 已存在: {out_path}",
+                   "hint": "向用户确认覆盖后换一个 out 路径, 或让用户确认后重试同名"})
+    try:
+        arr = _vendor_array(g, e)
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        return _j({"ok": False, "error": f"解析失败: {exc}", "group": name, "ext": e})
+    if arr is None:
+        return _j({"ok": False, "error": f"不支持的文件类型: {e}",
+                   "hint": "本工具只导出 .rwb/.dtb/.brb/.avb 二进制数据体"})
+    idxs, err = vd.select_columns(arr, columns)
+    if err:
+        return _j({"ok": False, "error": err, "labels": arr.labels})
+    try:
+        written = arr.to_csv(out_path, columns=idxs)
+    except OSError as exc:
+        return _j({"ok": False, "error": f"写出失败: {exc}", "out": str(out_path)})
+    ncols = len(idxs) if idxs is not None else arr.ncols
+    return _j({"ok": True, "csv": str(written), "rows": arr.nrows, "cols": ncols,
+               "size_bytes": written.stat().st_size,
+               "notes": arr.notes})
 
 
 
