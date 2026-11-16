@@ -198,7 +198,8 @@ def cmd_install(args: argparse.Namespace) -> int:
             print("# Skill would be installed to: %s" % skills_dir)
             if args.write:
                 skills_dir.mkdir(parents=True, exist_ok=True)
-                (skills_dir / "SKILL.md").write_text(cfg.skill_text(), encoding="utf-8")
+                (skills_dir / "SKILL.md").write_text(cfg.skill_text(),
+                                                     encoding="utf-8", newline="\n")
                 print("# Skill written.")
     return 0
 
@@ -209,7 +210,8 @@ def cmd_sync_skill(_args: argparse.Namespace) -> int:
     if not (repo / "run_server.py").is_file():
         raise SystemExit("Not a source checkout: %s" % repo)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(cfg.skill_text(), encoding="utf-8")
+    # newline="\n": keep LF endings so the copy stays byte-identical to the package data
+    dest.write_text(cfg.skill_text(), encoding="utf-8", newline="\n")
     print("Skill synced to %s" % dest)
     return 0
 

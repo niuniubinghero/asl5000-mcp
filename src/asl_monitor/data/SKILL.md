@@ -78,6 +78,19 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 - 对比调参效果：改参数前后各调一次 `asl_query_breath_params` 或抓 `asl_snapshot`，对比 PEEP / Vt / 触发响应时间 / 做功变化。
 - 波形 CSV 可直接用 pandas 分析；录波会话在 `recordings/<会话>/`，路径由 `asl-monitor check` 输出。
 - 长程录波建议分段（`split_sec`），并开启 `wall_time` 以便与其它日志按时间对齐。
+- **采样率不固定（强制规范）**：采样率随脚本变（实测 64 / 128 / 512 Hz 三档都出现过），
+  任何画图/计算的时间轴**一律用 `Time (sec)` 列**，禁止按固定 dt 或按消息到达时间推算采样率。
+- **容积单位（强制规范）**：广播 CSV 与 `.dtb` 的容积是 **mL**，`.rwb` 的容积标 **L**（数值差 1000 倍），
+  跨文件对比前先核对列名里的单位。
+- **厂商原始数据直接用 MCP 工具解析（只读，不发 TAI）**：
+  1. `asl_vendor_scan(path="", deep=True, name="")` — 扫描数据组目录（默认 `<ASL_ROOT>\ASLdata`），
+     返回每组文件清单/大小/行数/时长/采样率；`name` 可按组名子串过滤；
+  2. `asl_vendor_read(name, ext='rwb'|'dtb'|'brb'|'avb', columns="", preview_rows=3)` — 返回自描述头解析、
+     全部列名、各列统计（min/max/mean）与前 N 行实际值；`columns` 逗号分隔列名或索引；
+  3. `asl_vendor_export(name, ext, out="", columns="")` — 导出 UTF-8-BOM CSV（默认写到
+     `recordings\vendor\<NAME><ext>.csv`；目标已存在会被拒绝，须让用户确认后再换名/覆盖）。
+  已知厂商缺陷：`.dtb` 头部 500B 被截断，第 13–16 列无可靠标签（保留 `dtb_colNN`），**不许给未标注列编造物理名**；
+  `.dtb` 没有 `Time (sec)` 列（时间轴在 `.rwb` 第 0 列）。
 - **厂商原始留存数据（TAI 控制与 GUI 操作是同一套）**：`asl_run(wf=1)` 由 ASL 软件写出
   `<ASL_ROOT>\ASLdata\<NAME>.*`，8 个文件一组（`.dtb` / `.rwb` / `.brb` / `.avb` / `.aux` / `.vol` / `.tdms` / `.tdms_index`），
   与广播 CSV 是两套独立数据，归档时整组一起拷走。`.dtb` 含 `Total Flow (L/min)`，而 6343 广播 CSV **没有**流量列。
@@ -101,7 +114,7 @@ description: ASL 5000 模拟肺控制与测试引导（配合 asl-monitor MCP）
 
 然后 `asl_load_script(name="<脚本名>", path="\\VARS\\<子目录>")`（不带扩展名），再 `asl_run`。官方场景目录里 `.sct` 与同名 `.vr3` 成对存在，可作为格式参考。
 
-**批量造模型请用仓库自带的离线工具**：`tools/make_lung_model.py` 按模板改写 `.vr3` 变量；**显式加 `--sct` 才同时写出同名 `.sct` 包装，默认只出模型**，支持单个 `--set` 与 `--from-json` 批量模式；安装根由 `--asl-root` / `ASL_ROOT` 自动探测。用法与参数见 `tools/README.md`（源码方式运行，不随 wheel 安装、**不在 22 个 MCP 工具里**）。
+**批量造模型请用仓库自带的离线工具**：`tools/make_lung_model.py` 按模板改写 `.vr3` 变量；**显式加 `--sct` 才同时写出同名 `.sct` 包装，默认只出模型**，支持单个 `--set` 与 `--from-json` 批量模式；**库里的旧 `.vr3` 缺包装时用 `--sct-only` 只补 `.sct`**（不读模板、不重写模型，已有 `.sct` 默认跳过、加 `--force` 才覆盖）；安装根由 `--asl-root` / `ASL_ROOT` 自动探测。用法与参数见 `tools/README.md`（源码方式运行，不随 wheel 安装、**不在 25 个 MCP 工具里**）。
 
 - 模板需自备：从本机 `<ASL_ROOT>/vars/scenarios/` 挑一个官方 `.vr3`。本仓库出于合规与体积考虑**不分发** `.vr3` 模型、脚本清单 CSV、厂商可执行文件或厂商文档。
 - 生成阶段写 `.sct` 是**可选**的（省略 `--sct` 就只出 `.vr3`）；但**加载阶段**必须有同名 `.sct`，否则 `asl_run` 报 ERROR(14)。两者别混淆。
