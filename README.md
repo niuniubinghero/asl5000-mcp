@@ -22,8 +22,9 @@ Talk to your Agent in plain language: *"connect to the lung simulator, run the A
 | Active control | `asl_tai_start`, `asl_connect`, `asl_load_script`, `asl_run`, `asl_stop`, `asl_exit`, `asl_tai_status` | Start TAI, open ASL, load a scenario, run/stop a simulation |
 | Analysis | `asl_query_breath_params`, `asl_export_waveform` | Per-breath parameters (PIP/PEEP/AutoPEEP/Vt/trigger delay/work of breathing), full waveform export |
 | Configuration | `asl_init`, `asl_aux`, `asl_set_interactive`, `asl_set` | FRC / tubing compensation, auxiliary circuit, live changes to lung mechanics and closed-loop targets |
+| Vendor data (read-only) | `asl_vendor_scan`, `asl_vendor_read`, `asl_vendor_export` | Scan the `ASLdata` recording groups; column labels, per-column stats and previews (.rwb/.dtb/.brb/.avb); CSV export |
 
-22 tools in total. The Skill encodes the operating order, hard constraints (serial control commands, never call `asl_exit` unless asked, confirm before moving the piston) and the error-code recovery table.
+25 tools in total. The Skill encodes the operating order, hard constraints (serial control commands, never call `asl_exit` unless asked, confirm before moving the piston) and the error-code recovery table.
 
 ### Vendor recording files (kept by default)
 
@@ -108,7 +109,7 @@ See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESH
 
 ## 中文
 
-用自然语言对 Agent 说：「连模拟肺，跑 Adult_normal 场景，把 C1 改成 50 前后各取一次 PEEP 对比」。Agent 通过 `asl-monitor` 的 22 个工具完成，`asl-lung-sim` Skill 负责约束操作顺序与安全边界。
+用自然语言对 Agent 说：「连模拟肺，跑 Adult_normal 场景，把 C1 改成 50 前后各取一次 PEEP 对比」。Agent 通过 `asl-monitor` 的 25 个工具完成，`asl-lung-sim` Skill 负责约束操作顺序与安全边界。
 
 ### 能力一览
 
@@ -120,6 +121,7 @@ See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESH
 | 主动控制 | `asl_tai_start`、`asl_connect`、`asl_load_script`、`asl_run`、`asl_stop`、`asl_exit`、`asl_tai_status` | 拉起 TAI、连机、加载脚本、启动/停止仿真 |
 | 参数分析 | `asl_query_breath_params`、`asl_export_waveform` | 逐口参数（PIP/PEEP/AutoPEEP/Vt/触发响应时间/做功）、完整波形导出 |
 | 实时配置 | `asl_init`、`asl_aux`、`asl_set_interactive`、`asl_set` | FRC/管路补偿、辅助回路、运行中改肺模型与闭环目标 |
+| 厂商数据解析 | `asl_vendor_scan`、`asl_vendor_read`、`asl_vendor_export` | 只读扫描 `ASLdata` 数据组、读列名/各列统计/预览行 (.rwb/.dtb/.brb/.avb)、导出 CSV |
 
 ### 厂商原始数据默认保留
 
@@ -195,7 +197,7 @@ python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 
 ```
 pyproject.toml          packaging + asl-monitor console script
-src/asl_monitor/        server.py / monitor.py / tai.py / config.py / cli.py
+src/asl_monitor/        server.py / monitor.py / tai.py / recording.py / vendor_data.py / config.py / cli.py
   data/SKILL.md         authoritative Agent Skill (shipped in the wheel)
 skill/asl-lung-sim/     identical copy for manual installation
 configs/                zero-absolute-path client snippets (pip mode)

@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `asl_vendor_scan` / `asl_vendor_read` / `asl_vendor_export` (MCP tools 23–25):
+  read-only parsing of the vendor recording groups via `vendor_data.py` —
+  scan `ASLdata` directories (optional name filter, shallow/deep), inspect column
+  labels / per-column stats / preview rows for `.rwb/.dtb/.brb/.avb`, and export
+  selected columns to UTF-8-BOM CSV with an overwrite guard. The tool wrappers live
+  in `server.py`; the reusable logic (`select_columns`, `stats_block`,
+  `preview_block`) is in `vendor_data.py` and covered by the new hardware-free
+  `tests/test_vendor.py` (93 tests total).
+- `tools/make_lung_model.py --sct-only`: generate only the matching `.sct` wrapper
+  for an already existing `.vr3`. `--template` is conditionally optional, the model
+  file is never rewritten (bytes and mtime untouched, asserted by tests), existing
+  wrappers are skipped unless `--force` (per-item `"force": true`), and
+  `{"sct_only": true, "out": ...}` works in `--from-json` batch mode. 7 new tests
+  in `TestSctOnly`.
 - `asl_prepare_recording` (22nd MCP tool): read-only preflight for the vendor recording
   data group. Returns a recommended `<script>_<timestamp>` name, resolves the output
   directory, detects an existing same-named group (file count, size, header-only check)

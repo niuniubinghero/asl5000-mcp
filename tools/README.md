@@ -1,15 +1,20 @@
-# Offline tools / 离线工具
+# Standalone tools / 独立工具
 
-Two standalone scripts. They do **not** talk to the simulator and are not part of the 22 MCP tools.
-They run straight from a source checkout with any Python >= 3.10 (standard library only).
+Standalone scripts, **not** part of the 25 MCP tools. They run straight from a source checkout with
+any Python >= 3.10 (standard library only). Most are offline; `live_wave_view.py` is the exception —
+it listens to the simulator's live TAI broadcast while a test is running.
 
 | Script | Job | Output |
 |---|---|---|
 | `make_lung_model.py` | Build new lung models from a `.vr3` template | `.vr3`, plus a matching `.sct` wrapper only when `--sct` is given |
 | `build_script_index.py` | Index the vendor script library | 3 searchable CSV files |
+| `build_wave_view.py` | Parse vendor `.rwb/.dtb/.brb` recording groups (**after** the run) | Self-contained offline ECharts HTML |
+| `live_wave_view.py` | Live TAI broadcast / CSV tail / replay (**during** the run) | Local HTTP dashboard with ECharts |
 
-`_paths.py` is shared path discovery. All three are independent of `asl_monitor` and are shipped in
-the source distribution (sdist), but are **not** installed as console commands by the wheel.
+`_paths.py` is shared path discovery. The first two scripts are independent of `asl_monitor`;
+`build_wave_view.py` uses the read-only parser in `src/asl_monitor/vendor_data.py`, and
+`live_wave_view.py` reuses `src/asl_monitor/monitor.py` for the broadcast frame decoder. All are
+shipped in the source distribution (sdist), but are **not** installed as console commands by the wheel.
 
 ## Why they exist
 
@@ -55,6 +60,12 @@ python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_norm
   --out "<scenario-dir>/hme_r21.vr3" \
   --set r_trachea_in=21 --set r_trachea_out=23 --set spontaneous_breathing_rate=18 --sct
 
+# Only the missing .sct wrapper for an ALREADY EXISTING .vr3 (--sct-only: no template
+# needed; the model's bytes and mtime are untouched). Skips an existing wrapper
+# unless --force. Also available per-item in batch mode: {"sct_only": true, "out": ...}
+python tools/make_lung_model.py --sct-only --out "<scenario-dir>/legacy.vr3"
+python tools/make_lung_model.py --sct-only --out "<scenario-dir>/legacy.vr3" --force
+
 # Batch mode
 python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
 ```
@@ -63,6 +74,11 @@ python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_norm
 `sct` key is optional: omit it (or leave out `--sct`) and only the `.vr3` is written. Use
 `--outdir <dir>` to write somewhere other than the vendor `vars/` directory (the `.sct` then
 references an absolute path; keeping files under `vars/` is recommended).
+
+`--sct-only` (or the per-item `"sct_only": true`) switches a job to wrapper-only mode: the target
+`.vr3` must already exist, no template is read and the model file is never rewritten (its bytes and
+mtime stay untouched — verified by tests). An existing `.sct` is skipped unless `--force`
+(per-item `"force": true`); `--set` is rejected in this mode.
 
 Typical use: sweep airway resistance / compliance / breathing rate for a CPAP or HME compensation
 study, then load each variant through `asl_load_script` and compare waveforms.
@@ -106,9 +122,117 @@ Both scripts accept `--asl-root <dir>`. Without it, `_paths.py` resolves in this
 
 No drive letter, user name or absolute install path is baked into the source.
 
+## Vendor recording viewer (`build_wave_view.py`)
+
+```bash
+python tools/build_wave_view.py                                  # default 3-group CPAP comparison
+python tools/build_wave_view.py --names SIN10BPM SIN15BPM SIN20BPM
+python tools/build_wave_view.py --all                           # every group (large HTML)
+python tools/build_wave_view.py --data-dir <ASLdata> --out view.html
+```
+
+The ASLdata directory is auto-discovered via `_paths.py`, or set `$ASL_DATA_DIR` / `--data-dir`.
+`tools/assets/echarts.min.js` is inlined so the result works offline with no CDN.
+
+Vendor files are **self-describing**: the leading ASCII header states the header length, byte order
+and column labels. The data body is a row-major 2D array of **big-endian float32** (using the wrong
+endianness yields ~1e20 garbage). `src/asl_monitor/vendor_data.py` parses it with no dependencies:
+
+| File | Header | Body | Content |
+|---|---|---|---|
+| `.rwb` | 500 B | N x 13 | Raw waveforms incl. `Time (sec)` |
+| `.dtb` | 500 B | N x 16 | Same rows as `.rwb`, adds `Total Flow (L/min)` |
+| `.brb` | 4096 B | M x 107 | Per-breath derived parameters |
+| `.avb` | 2000 B | K x 93 | Model / setting snapshots |
+| `.aux`, `.vol` | ASCII | TSV | Usually header only |
+| `.tdms*` | TDMS | — | Metadata only, no waveform data |
+
+Two vendor quirks matter in practice:
+
+- `.dtb`'s 500-byte header is **truncated** — the last visible label is `Trac`, while the body has
+  16 columns. Col 12 is unverified and col 13–15 are unlabeled duplicates/derivatives. The parser
+  keeps them as `dtb_colNN` instead of inventing physical names; the viewer only exposes the
+  header-confirmed channels.
+- The sample rate is **not constant** across sessions (64 / 128 / 512 Hz observed). Always use
+  `.rwb` col 0 `Time (sec)` as the X axis; never assume a fixed dt.
+
+The viewer supports group/channel toggles, three X alignments (absolute time / within-breath time /
+breath phase 0–100%), unit switches, wheel + box + slider zoom, crosshair readout, live window
+statistics, a sortable per-breath table, CSV/PNG export and light/dark themes. Waveforms are
+embedded as base64 float32 at full resolution — no downsampling.
+
+## Live waveform viewer (`live_wave_view.py`)
+
+Use this **while the simulator is running**. It watches the same TAI broadcast that the MCP
+recorder taps:
+
+```
+ASL5000_SW3.6.exe
+  ├─ TCP 6342  per-breath params (ASCII, one "name<TAB>value" per line)
+  └─ TCP 6343  continuous waveform (TAB separated, header line, 64/128/512 Hz)
+        │        each frame prefixed by a 4-byte BIG-ENDIAN int32 length
+        └─ live_wave_view.py ──> http://127.0.0.1:8765  (ECharts)
+```
+
+```bash
+python tools/live_wave_view.py                                   # direct broadcast (recommended)
+python tools/live_wave_view.py --tail <recordings/.../waveform_001.csv>   # follow MCP recorder
+python tools/live_wave_view.py --replay <waveform.csv> --speed 8 --no-browser  # offline check
+python tools/live_wave_view.py --port 9000 --no-browser
+```
+
+Three data sources cover three situations: direct broadcast (no MCP recorder needed; multiple TCP
+clients are allowed), tailing the CSV that `asl_start_recording` is writing, and replaying a past
+CSV to reproduce / verify a session without hardware. The browser polls `/api/data?cursor=N` for
+incremental rows; `/api/meta`, `/api/export?sec=N` expose channel metadata and CSV download.
+
+Interaction: follow window 5/10/30/60 s or the whole buffer, pause (data keeps arriving in the
+background) then freely wheel/box/slider zoom, channel toggles (13 columns mapped by header name),
+cmH₂O↔hPa and mL↔L, breath-boundary mark lines, crosshair readout, live numeric cards from the
+6342 breath parameters, CSV export, light/dark themes. ECharts is inlined, so no CDN is needed.
+
+**Important differences from the vendor files:**
+
+| | 6343 broadcast / recorder CSV | Vendor `.rwb` / `.dtb` |
+|---|---|---|
+| When | during the run | written by ASL software at the end of the run |
+| Encoding | ASCII TSV | 500 B ASCII header + big-endian float32 |
+| Flow column | **absent** | `Total Flow (L/min)` present in `.dtb` |
+| Volume units | `mL` | `.rwb` labels them **`L`** (1000x smaller numbers); `.dtb` uses `mL` |
+| Extra columns | `Recv Time`, `Breath Detection (#)` | — |
+
+Row counts, timestamps, pressures, Aux and O₂ values are identical between the broadcast CSV and
+`.rwb` (verified point-by-point on a 34 453-row session); only the volume scaling and the two extra
+columns differ.
+
+### Sample rate: broadcast == `.rwb`
+
+Yes — for a given run they are the **same samples**, not a resampled copy. On the 34 453-row
+11/13 session, the `Time (sec)` columns match with max diff `0.0`, both span 67.289550781 s,
+both have median step `0.001953125 s` (= 1/512) and the same step histogram; pressures/Aux/O₂
+differ only by float32→text round-off (~1e-15).
+
+But the rate is **set per script, not fixed**: across the 19 local `.rwb` groups with waveforms,
+11 run at 64 Hz, 3 at 128 Hz, 5 at 512 Hz. So "same as `.rwb`" means "same as that run's `.rwb`",
+not "always 512 Hz".
+
+Do **not** derive the rate from arrival timing. 6343 pushes ~100 rows per framed message: 34 120 of
+34 452 `Recv Time` gaps are exactly zero, with 332 batch gaps >100 ms (max 0.442 s). `Recv Time` is a
+wall-clock stamp for the whole batch, not a sample clock. Replay `--speed` changes arrival rate and
+must not change the reported sample rate. `/api/meta.sample_rate_hz` therefore uses the reciprocal of
+the median positive `Time (sec)` step over the last 1024 rows (512.0 Hz for this session); the badge
+shows that value.
+
+Minor real jitter: 34 445 steps are 1/512 s, 4 are 0.002441406 s and 3 are 0.001464844 s
+(float32 quantization / clock jitter). Total-duration averaging gives 511.996 Hz; nominal is 512 Hz.
+
+The live viewer deliberately does **not** draw a flow curve: a curve derived from `dV/dt` does not
+reproduce the vendor `Total Flow` (it is not a plain derivative), and 6342 already provides real
+peak inspiratory/expiratory flow per breath.
+
 ## Notes
 
-- These tools read and write **vendor file formats only**. They do not include any `.vr3`, `.sct`,
+- These tools read and write **vendor file formats and vendor broadcast streams only**. They do not include any `.vr3`, `.sct`,
   `.in`, vendor executable or vendor documentation. You must have a legitimate ASL 5000 install.
 - Generated CSVs, models and scenario scripts are local data. They are git-ignored and must not be
   committed to this repository.
