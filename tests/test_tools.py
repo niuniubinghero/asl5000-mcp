@@ -135,6 +135,110 @@ class TestMakeVr3(unittest.TestCase):
             self.assertEqual(sct.name, "model.sct")
 
 
+class TestSctOnly(unittest.TestCase):
+    """--sct-only: wrap an existing .vr3 without reading a template or rewriting it."""
+
+    MTIME = 1600000000
+
+    def _write_model(self, root: Path) -> Path:
+        model = root / "vars" / "scenarios" / "legacy.vr3"
+        model.parent.mkdir(parents=True)
+        model.write_bytes(VR3_LINE.encode("latin-1"))
+        os.utime(model, (self.MTIME, self.MTIME))
+        return model
+
+    def _run(self, *argv):
+        out = io.StringIO()
+        with patch("sys.argv", ["make_lung_model.py", *argv]), \
+                contextlib.redirect_stdout(out):
+            code = make_lung_model.main()
+        return code, out.getvalue()
+
+    def test_creates_wrapper_without_touching_model(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            model = self._write_model(root)
+            before = model.read_bytes()
+            code, stdout = self._run("--sct-only", "--out", str(model),
+                                     "--asl-root", str(root))
+            self.assertEqual(code, 0, stdout)
+            sct = model.with_suffix(".sct")
+            self.assertTrue(sct.is_file())
+            data = sct.read_bytes()
+            self.assertTrue(data.startswith(b"1000\t"))
+            self.assertIn(b"<ASLVarsDirectory>", data)
+            self.assertTrue(data.endswith(b"\r\n"))
+            # model bytes AND mtime must be untouched
+            self.assertEqual(model.read_bytes(), before)
+            self.assertEqual(model.stat().st_mtime, self.MTIME)
+
+    def test_missing_model_is_an_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "vars").mkdir()
+            target = root / "vars" / "scenarios" / "nope.vr3"
+            code, stdout = self._run("--sct-only", "--out", str(target),
+                                     "--asl-root", str(root))
+            self.assertEqual(code, 1)
+            self.assertIn("不存在", stdout)
+            self.assertFalse(target.with_suffix(".sct").exists())
+
+    def test_existing_wrapper_skipped_without_force(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            model = self._write_model(root)
+            sct = model.with_suffix(".sct")
+            sct.write_bytes(b"555\tOLD\r\n")
+            code, stdout = self._run("--sct-only", "--out", str(model),
+                                     "--asl-root", str(root))
+            self.assertEqual(code, 0, stdout)
+            self.assertIn("跳过", stdout)
+            self.assertEqual(sct.read_bytes(), b"555\tOLD\r\n")
+
+    def test_force_overwrites_existing_wrapper(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            model = self._write_model(root)
+            sct = model.with_suffix(".sct")
+            sct.write_bytes(b"555\tOLD\r\n")
+            code, stdout = self._run("--sct-only", "--out", str(model),
+                                     "--force", "--asl-root", str(root))
+            self.assertEqual(code, 0, stdout)
+            self.assertTrue(sct.read_bytes().startswith(b"1000\t"))
+
+    def test_set_rejected_in_sct_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            model = self._write_model(root)
+            code, stdout = self._run("--sct-only", "--out", str(model),
+                                     "--set", "r_trachea_in=21",
+                                     "--asl-root", str(root))
+            self.assertEqual(code, 1)
+            self.assertIn("--set", stdout)
+
+    def test_batch_sct_only_without_template(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            self._write_model(root)
+            batch = Path(d) / "batch.json"
+            batch.write_text('[{"sct_only": true, "out": "scenarios/legacy.vr3"}]',
+                             encoding="utf-8")
+            code, stdout = self._run("--from-json", str(batch),
+                                     "--asl-root", str(root))
+            self.assertEqual(code, 0, stdout)
+            sct = root / "vars" / "scenarios" / "legacy.sct"
+            self.assertTrue(sct.is_file())
+            self.assertIn(b"<ASLVarsDirectory>", sct.read_bytes())
+
+    def test_template_still_required_for_normal_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "vars").mkdir()
+            code, stdout = self._run("--out", "x.vr3", "--asl-root", str(root))
+            self.assertEqual(code, 1)
+            self.assertIn("--template", stdout)
+
+
 class TestScriptIndex(unittest.TestCase):
 
     def test_parse_name(self):

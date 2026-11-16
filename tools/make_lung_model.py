@@ -2,7 +2,8 @@
 """模拟肺模型与场景脚本生成器 / Lung-model & scenario-script generator (ASL 5000 / TAI)
 
 名字按"生成什么"(肺模型及其加载脚本)而非文件扩展名来取: 产物可以是 .vr3 模型、
-可选的 .sct 场景脚本, 或(规划中的 --sct-only)只补一份 .sct。
+可选的 .sct 场景脚本, 或 --sct-only 模式下只为已有 .vr3 补一份 .sct(不读模板、不重写模型,
+模型文件的字节与 mtime 保持原样)。
 
 按模板 .vr3 生成新模型文件, 仅改写指定变量的值字段, 其余字节(TAB/空格对齐/CRLF)原样保留;
 可选生成配套 .sct 包装(仅传 --sct 时; 缺省只出 .vr3)。包装为单行 TAB 分隔文本:
@@ -26,16 +27,22 @@
     # 生成单个模型 + 同名 .sct 包装 (加 --sct; --out 相对路径按 ASL vars 目录解析)
     python make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --out "<scenario-dir>/hme_r21.vr3" --set r_trachea_in=21 --sct
 
+    # 只为已有 .vr3 补同名 .sct 包装 (sct-only: 不需要模板, 模型字节与 mtime 不动)
+    python make_lung_model.py --sct-only --out "<scenario-dir>/legacy_model.vr3"
+    python make_lung_model.py --sct-only --out "<scenario-dir>/legacy_model.vr3" --force  # 已有 .sct 时覆盖
+
     # 批量生成 (JSON 数组, out 相对 --outdir 或 vars 目录)
     python make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_normal.vr3" --from-json batch.json
 
 batch.json 示例:
     [
       {"out": "<scenario-dir>/m1.vr3", "set": {"r_trachea_in": 21}, "sct": true, "reps": 1000},
-      {"out": "<scenario-dir>/m2.vr3", "set": {"function_residual_capacity": 0.8}}
+      {"out": "<scenario-dir>/m2.vr3", "set": {"function_residual_capacity": 0.8}},
+      {"sct_only": true, "out": "<scenario-dir>/legacy.vr3", "force": false}
     ]
 
-省略 sct 的条目只出 .vr3; batch.json 必须是合法 JSON(不支持注释)。
+省略 sct 的条目只出 .vr3; sct_only 条目不读模板、只为已有 .vr3 补包装(force 覆盖已有 .sct);
+batch.json 必须是合法 JSON(不支持注释)。
 
 注意:
 - 值按原样写入; 浮点数统一 6 位小数(与官方文件风格一致), 整数/字符串原样
@@ -223,8 +230,10 @@ def report(applied, not_found, out_path, sct_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="按模板生成肺模型(.vr3), 可选同时写出场景脚本包装(.sct)")
-    ap.add_argument("--template", required=True, help="模板 .vr3 路径")
+    ap = argparse.ArgumentParser(
+        description="按模板生成肺模型(.vr3), 可选同时写出场景脚本包装(.sct); "
+                    "或用 --sct-only 只为已有 .vr3 补包装")
+    ap.add_argument("--template", help="模板 .vr3 路径 (sct-only 模式可省略)")
     ap.add_argument("--asl-root", help="ASL 安装根目录(含 vars/); 缺省自动探测")
     ap.add_argument("--out", help="输出 .vr3 路径(相对路径按 ASL vars 目录解析)")
     ap.add_argument("--outdir", help="输出根目录(缺省 ASL vars 目录)")
@@ -232,14 +241,41 @@ def main():
                     help="改写变量, 可多次; 值含空格时整体加引号")
     ap.add_argument("--from-json", help="批量模式: JSON 数组文件")
     ap.add_argument("--sct", action="store_true", help="同时生成同名 .sct 包装(缺省不生成; 仅当要用 asl_run 加载时才需要)")
+    ap.add_argument("--sct-only", action="store_true",
+                    help="只为已存在的 .vr3 生成同名 .sct 包装; 不读模板、不改写模型文件(字节与 mtime 不动)")
+    ap.add_argument("--force", action="store_true",
+                    help="目标 .sct 已存在时覆盖(缺省跳过); 批量条目也可用 \"force\": true")
     ap.add_argument("--reps", type=int, default=1000, help=".sct 首列重复次数(默认 1000)")
     ap.add_argument("--list", action="store_true", help="只列出模板全部变量, 不生成")
     args = ap.parse_args()
 
-    if not os.path.exists(args.template):
-        print("模板不存在: %s" % args.template)
+    if args.sct_only and args.set:
+        print("--sct-only 不改写模型, 不能与 --set 同用")
         return 1
-    lines = load_vr3(args.template)
+    if args.sct_only and args.list:
+        print("--sct-only 不支持 --list (它不读模板)")
+        return 1
+
+    lines = None
+    if args.list:
+        if not args.template:
+            print("--list 需要 --template")
+            return 1
+        if not os.path.exists(args.template):
+            print("模板不存在: %s" % args.template)
+            return 1
+        lines = load_vr3(args.template)
+    elif args.template:
+        # 模板给了就先校验; sct-only 模式下模板可选
+        if not os.path.exists(args.template):
+            print("模板不存在: %s" % args.template)
+            return 1
+        lines = load_vr3(args.template)
+    elif not args.sct_only and not args.from_json:
+        print("需要 --template (sct-only 模式可省略)")
+        return 1
+    # 其余情况(--sct-only 无模板 / --from-json 全部 sct_only)到任务循环里再判:
+    # 只要出现普通生成任务而没有模板, 会报 "缺少 --template"
 
     if args.list:
         print("模板 %s 共 %d 个变量:" % (args.template, len(list_vars(lines))))
@@ -272,16 +308,39 @@ def main():
                 "set": item.get("set", {}),
                 "sct": bool(item.get("sct", args.sct)),
                 "reps": int(item.get("reps", args.reps)),
+                "sct_only": bool(item.get("sct_only", args.sct_only)),
+                "force": bool(item.get("force", args.force)),
             })
     elif args.out:
-        jobs.append({"out": args.out, "set": single, "sct": args.sct, "reps": args.reps})
+        jobs.append({"out": args.out, "set": single, "sct": args.sct,
+                     "reps": args.reps, "sct_only": args.sct_only,
+                     "force": args.force})
     else:
         print("需要 --out 或 --from-json (或用 --list 查看模板)")
         return 1
 
     any_missing = False
+    any_error = False
     for job in jobs:
         out_path = resolve_out(job["out"], vars_dir, args.outdir)
+        if job.get("sct_only"):
+            # 只补包装: 目标模型必须已存在, 且绝不重写它 (字节与 mtime 不动)
+            if not os.path.isfile(out_path):
+                print("目标 .vr3 不存在: %s" % out_path)
+                any_error = True
+                continue
+            sct_path = os.path.splitext(out_path)[0] + ".sct"
+            if os.path.isfile(sct_path) and not job.get("force"):
+                print("已存在, 跳过 (要覆盖加 --force): %s" % sct_path)
+                continue
+            written = make_sct(out_path, vars_dir, reps=job["reps"])
+            print("生成: %s" % out_path)
+            print("  包装: %s" % written)
+            continue
+        if lines is None:
+            print("缺少 --template, 无法生成模型: %s" % out_path)
+            any_error = True
+            continue
         new_lines, applied, not_found = set_vars(lines, job["set"])
         if not_found:
             any_missing = True
@@ -289,7 +348,7 @@ def main():
                     if job["sct"] else None)
         save_vr3(out_path, new_lines)
         report(applied, not_found, out_path, sct_path)
-    return 2 if any_missing else 0
+    return 1 if any_error else (2 if any_missing else 0)
 
 
 if __name__ == "__main__":
