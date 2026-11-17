@@ -186,10 +186,21 @@ clients are allowed), tailing the CSV that `asl_start_recording` is writing, and
 CSV to reproduce / verify a session without hardware. The browser polls `/api/data?cursor=N` for
 incremental rows; `/api/meta`, `/api/export?sec=N` expose channel metadata and CSV download.
 
-Interaction: follow window 5/10/30/60 s or the whole buffer, pause (data keeps arriving in the
-background) then freely wheel/box/slider zoom, channel toggles (13 columns mapped by header name),
-cmH₂O↔hPa and mL↔L, breath-boundary mark lines, crosshair readout, live numeric cards from the
-6342 breath parameters, CSV export, light/dark themes. ECharts is inlined, so no CDN is needed.
+Interaction: default **three panels** mirroring the Run Time Home layout — Pressure (all 5 pressure
+traces), Flow (derived `Total Flow` + `Chamber 1/2 Flow`), Volume (3 traces) — plus a "＋ 添加波形面板"
+button for unlimited extra panels. Every panel can toggle any channel via chips, has an editable
+title (click it) and a ✕ close button; all panels share connected zoom/crosshair via
+`echarts.connect`. Follow window 5/10/30/60 s or the whole buffer, pause with Space (data keeps
+arriving in the background) then freely wheel/drag zoom, cmH₂O↔hPa, L/min↔mL/s and mL↔L unit
+switches, breath-boundary mark lines, crosshair readout, live numeric cards from the 6342 breath
+parameters, CSV export (derived flow columns included), light/dark themes. ECharts is inlined, so
+no CDN is needed.
+
+**Derived flow channels:** the 6343 broadcast has no flow columns, so the Hub computes
+`Total/Chamber 1/2 Flow = dV/dt` (backward difference at the native sample rate + light EMA
+smoothing). Validated against the 6342 per-breath `Peak Insp. Flow` (~27 L/min both) on a real
+recording. Use the derived curves for shape inspection; for quantitative peak flow prefer the 6342
+breath parameters or the vendor `.dtb`.
 
 **Important differences from the vendor files:**
 
