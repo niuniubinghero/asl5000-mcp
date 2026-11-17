@@ -101,7 +101,20 @@ python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 `make_lung_model.py` builds model variants; add `--sct` to also write the matching `.sct` wrapper
 that `asl_run` requires (off by default).
 `build_script_index.py` produces a 32-column searchable CSV index of `vars/` and `breath/`.
-Both auto-detect the install root or take `--asl-root`. See [tools/README.md](tools/README.md).
+Both auto-detect the install root or take `--asl-root`.
+
+A third tool, `tools/live_wave_view.py`, is a **live waveform dashboard** (browser-based, ECharts):
+opens the simulator's TCP 6342 (per-breath parameters) and 6343 (512 Hz waveform) broadcasts,
+renders multi-panel pressure/flow/volume traces with zoom/pan/crosshair linking, a Real Time
+Analysis parameter panel, and an Interactive Control tab (TAI 6341) that reads/writes lung-model,
+spontaneous-breath and closed-loop parameters with pump-mode detection. Run it alongside a live
+simulation — it reads only, except through the Interactive tab you explicitly use:
+
+```bash
+python tools/live_wave_view.py            # then open the printed http://127.0.0.1:PORT
+```
+
+See [tools/README.md](tools/README.md) for the full feature list.
 
 See [docs/INSTALL.md](docs/INSTALL.md), [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) and [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
@@ -183,7 +196,15 @@ python tools/make_lung_model.py --template "<ASL_ROOT>/vars/scenarios/Adult_norm
 python tools/build_script_index.py --asl-root "<ASL_ROOT>" --out-dir ./my-index
 ```
 
-`make_lung_model.py` 按模板批量造肺模型，显式加 `--sct` 才同时写出 `asl_run` 需要的 `.sct` 包装（默认只出模型、不写包装）；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。详见 [tools/README.md](tools/README.md)。
+`make_lung_model.py` 按模板批量造肺模型，显式加 `--sct` 才同时写出 `asl_run` 需要的 `.sct` 包装（默认只出模型、不写包装）；`build_script_index.py` 给 `vars/` 与 `breath/` 生成 32 列可检索清单。安装根自动探测，也可用 `--asl-root` 指定。
+
+第三个工具 `tools/live_wave_view.py` 是**实时波形看板**（浏览器打开，ECharts）：接仿真的 TCP 6342（逐口参数）与 6343（512 Hz 波形）广播，多面板压力/流量/容积曲线，支持滚轮缩放横轴、Shift+滚轮缩放纵轴、左/右键拖动平移、十字光标联动、末端涟漪动点；带 Real Time Analysis 参数实时面板和 Interactive Control tab（TAI 6341，交互读写肺模型/自主呼吸/闭环参数，含泵模式识别）。随仿真运行时启动，仅监听只读——除非你主动在 Interactive tab 里写入：
+
+```bash
+python tools/live_wave_view.py            # 打印出的 http://127.0.0.1:端口 用浏览器打开
+```
+
+详见 [tools/README.md](tools/README.md)。
 
 ### 安全提醒
 
@@ -203,7 +224,7 @@ skill/asl-lung-sim/     identical copy for manual installation
 configs/                zero-absolute-path client snippets (pip mode)
 run_server.py           source-mode entry point
 docs/                   INSTALL / TROUBLESHOOTING / PROTOCOL
-tools/                  offline .vr3 generator + script index (source checkout)
+tools/                  offline .vr3 generator + script index + live waveform dashboard (source checkout)
 tests/                  hardware-free unit tests
 ```
 
